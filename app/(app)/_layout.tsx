@@ -12,7 +12,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { ActivityIndicator, View } from 'react-native';
 import 'react-native-reanimated';
 
-import { useColorScheme } from '@/components/useColorScheme';
+import { useColorScheme } from '@/src/components/useColorScheme';
 import { useAppStore } from '@/src/store/useStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useAuth } from '@/src/store/auth';
