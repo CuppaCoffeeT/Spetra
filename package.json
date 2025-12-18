@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@react-navigation/drawer": "^7.5.8"
+  }
+}

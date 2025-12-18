@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "wallet-tracker",
+    "slug": "wallet-tracker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "wallettracker",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "extra": {
+      "supabaseUrl": "https://fpasfffeywotrclprcai.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwYXNmZmZleXdvdHJjbHByY2FpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxMzQxNDcsImV4cCI6MjA3NDcxMDE0N30.RAijwJV10m8dBwJUfb-y-aQeDb-m-1rEVL9ruc2-jZg"
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
