@@ -1,339 +1,250 @@
-import { useState } from 'react';
-import {
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-
-import { gmailService } from '@/src/services/gmail';
-import { useAppStore } from '@/src/store/useStore';
-import { Account } from '@/src/types';
-import { useShallow } from 'zustand/react/shallow';
-import { useAuth } from '@/src/store/auth';
-
-const accountTypes: Account['type'][] = ['bank', 'wallet', 'cash', 'card', 'other'];
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { useStore } from '../../src/store/useStore';
 
 export default function SettingsScreen() {
-  const { accounts, addAccount } = useAppStore(
-    useShallow((state) => ({
-      accounts: state.accounts,
-      addAccount: state.addAccount,
-    }))
-  );
-  const { session, signOut, loading: authLoading } = useAuth();
+  const {
+    session,
+    signOut,
+    authLoading,
+    gmailState,
+    gmailLoading,
+    connectGmail,
+    disconnectGmail,
+    syncEmails,
+    syncData,
+    syncLoading,
+  } = useStore();
 
-  const [newAccountName, setNewAccountName] = useState('');
-  const [newAccountType, setNewAccountType] = useState<Account['type']>('bank');
-  const [newAccountCurrency, setNewAccountCurrency] = useState('SGD');
-  const [isSavingAccount, setIsSavingAccount] = useState(false);
-  const [gmailState, setGmailState] = useState(gmailService.getState());
-  const [isSyncingGmail, setIsSyncingGmail] = useState(false);
-
-  const handleAddAccount = async () => {
-    if (!newAccountName.trim()) {
-      Alert.alert('Missing name', 'Provide a name for the account.');
-      return;
-    }
-
-    setIsSavingAccount(true);
+  const handleConnectGmail = async () => {
     try {
-      await addAccount({
-        name: newAccountName.trim(),
-        type: newAccountType,
-        currency: newAccountCurrency.trim() || 'SGD',
-      });
-      setNewAccountName('');
-      Alert.alert('Account added', 'The account is now available for use.');
+      await connectGmail();
+      Alert.alert('Success', 'Gmail connected successfully!');
     } catch (error) {
-      console.error(error);
-      Alert.alert('Error', 'Unable to save the account.');
-    } finally {
-      setIsSavingAccount(false);
+      Alert.alert('Error', (error as Error).message);
     }
   };
 
-  const handleGmailConnect = async () => {
-    setIsSyncingGmail(true);
+  const handleDisconnectGmail = async () => {
+    Alert.alert('Disconnect Gmail', 'Are you sure you want to disconnect Gmail?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Disconnect',
+        style: 'destructive',
+        onPress: async () => {
+          await disconnectGmail();
+        },
+      },
+    ]);
+  };
+
+  const handleSyncEmails = async () => {
     try {
-      const state = await gmailService.connect();
-      setGmailState(state);
+      const count = await syncEmails();
+      Alert.alert('Sync Complete', `Added ${count} new transactions`);
     } catch (error) {
-      console.error(error);
-      Alert.alert('Gmail connection failed', 'Try again with a valid OAuth setup.');
-    } finally {
-      setIsSyncingGmail(false);
+      Alert.alert('Error', (error as Error).message);
     }
   };
 
-  const handleGmailDisconnect = async () => {
-    const state = await gmailService.disconnect();
-    setGmailState(state);
-  };
-
-  const handleGmailSync = async () => {
-    if (!gmailState.isConnected) {
-      Alert.alert('Not connected', 'Connect Gmail first.');
-      return;
-    }
-
-    setIsSyncingGmail(true);
-    try {
-      const messages = await gmailService.fetchRecentMessages();
-      const transactions = await gmailService.transformToTransactions(messages);
-      // In a real implementation we would persist the parsed transactions.
-      Alert.alert(
-        'Mock sync complete',
-        `Parsed ${transactions.length} transaction(s) from Gmail.`
-      );
-    } catch (error) {
-      console.error(error);
-      Alert.alert('Sync failed', 'Check logs for additional details.');
-    } finally {
-      setIsSyncingGmail(false);
-    }
+  const handleSignOut = () => {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: signOut,
+      },
+    ]);
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.heading}>Profile</Text>
-      <View style={styles.card}>
-        <Text style={styles.bodyText}>Signed in as</Text>
-        <Text style={styles.accountName}>{session?.user?.email ?? 'Unknown user'}</Text>
-        <Pressable
-          style={[styles.secondaryButton, authLoading && styles.primaryButtonDisabled]}
-          onPress={() => void signOut()}
-          disabled={authLoading}
-        >
-          <Text style={styles.secondaryButtonText}>{authLoading ? 'Signing out…' : 'Sign out'}</Text>
-        </Pressable>
+    <View style={styles.container}>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Account</Text>
+        <View style={styles.card}>
+          <Text style={styles.label}>Email</Text>
+          <Text style={styles.value}>{session?.user?.email || 'Not signed in'}</Text>
+        </View>
       </View>
 
-      <Text style={styles.heading}>Accounts</Text>
-      <View style={styles.card}>
-        {accounts.map((account) => (
-          <View key={account.id} style={styles.accountRow}>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Gmail Integration</Text>
+        <View style={styles.card}>
+          <View style={styles.row}>
             <View>
-              <Text style={styles.accountName}>{account.name}</Text>
-              <Text style={styles.accountMeta}>
-                {account.type.toUpperCase()} · {account.currencyDefault}
+              <Text style={styles.label}>Status</Text>
+              <Text style={[styles.status, gmailState.isConnected && styles.connected]}>
+                {gmailState.isConnected ? 'Connected' : 'Not connected'}
               </Text>
+              {gmailState.email && (
+                <Text style={styles.gmailEmail}>{gmailState.email}</Text>
+              )}
             </View>
           </View>
-        ))}
-        <View style={styles.divider} />
-        <Text style={styles.subheading}>Add new account</Text>
-        <TextInput
-          placeholder="Account name"
-          value={newAccountName}
-          onChangeText={setNewAccountName}
-          style={styles.input}
-        />
-        <View style={styles.toggleRow}>
-          {accountTypes.map((type) => (
-            <Pressable
-              key={type}
-              style={[
-                styles.toggle,
-                newAccountType === type && styles.toggleActive,
-              ]}
-              onPress={() => setNewAccountType(type)}
-            >
-              <Text
-                style={[
-                  styles.toggleText,
-                  newAccountType === type && styles.toggleTextActive,
-                ]}
+
+          {gmailState.isConnected ? (
+            <View style={styles.buttonGroup}>
+              <TouchableOpacity
+                style={[styles.button, styles.primaryButton]}
+                onPress={handleSyncEmails}
+                disabled={gmailLoading}
               >
-                {type}
-              </Text>
-            </Pressable>
-          ))}
+                {gmailLoading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.buttonText}>Sync Emails</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, styles.outlineButton]}
+                onPress={handleDisconnectGmail}
+                disabled={gmailLoading}
+              >
+                <Text style={styles.outlineButtonText}>Disconnect</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[styles.button, styles.primaryButton]}
+              onPress={handleConnectGmail}
+              disabled={gmailLoading}
+            >
+              {gmailLoading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.buttonText}>Connect Gmail</Text>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {gmailState.lastSync && (
+            <Text style={styles.lastSync}>
+              Last synced: {new Date(gmailState.lastSync).toLocaleString()}
+            </Text>
+          )}
         </View>
-        <TextInput
-          placeholder="Currency (e.g. SGD)"
-          value={newAccountCurrency}
-          onChangeText={setNewAccountCurrency}
-          style={styles.input}
-        />
-        <Pressable
-          style={[styles.primaryButton, isSavingAccount && styles.primaryButtonDisabled]}
-          disabled={isSavingAccount}
-          onPress={handleAddAccount}
-        >
-          <Text style={styles.primaryButtonText}>
-            {isSavingAccount ? 'Saving...' : 'Add Account'}
-          </Text>
-        </Pressable>
       </View>
 
-      <Text style={styles.heading}>Gmail ingestion</Text>
-      <View style={styles.card}>
-        <Text style={styles.bodyText}>
-          Connect a Gmail label that forwards transaction alerts. This demo keeps the
-          connection in-memory for now; swap in real OAuth + Pub/Sub when ready.
-        </Text>
-        <Text style={styles.status}>
-          Status: {gmailState.isConnected ? 'Connected' : 'Disconnected'}
-        </Text>
-        {gmailState.lastSync && <Text style={styles.status}>Last sync: {gmailState.lastSync}</Text>}
-        <View style={styles.buttonRow}>
-          <Pressable
-            style={[styles.primaryButton, isSyncingGmail && styles.primaryButtonDisabled]}
-            onPress={handleGmailConnect}
-            disabled={isSyncingGmail}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Data</Text>
+        <View style={styles.card}>
+          <TouchableOpacity
+            style={[styles.button, styles.outlineButton]}
+            onPress={syncData}
+            disabled={syncLoading}
           >
-            <Text style={styles.primaryButtonText}>Connect Gmail</Text>
-          </Pressable>
-          <Pressable style={styles.secondaryButton} onPress={handleGmailDisconnect}>
-            <Text style={styles.secondaryButtonText}>Disconnect</Text>
-          </Pressable>
+            {syncLoading ? (
+              <ActivityIndicator color="#3b82f6" size="small" />
+            ) : (
+              <Text style={styles.outlineButtonText}>Sync with Cloud</Text>
+            )}
+          </TouchableOpacity>
         </View>
-        <Pressable
-          style={[styles.primaryButton, isSyncingGmail && styles.primaryButtonDisabled]}
-          onPress={handleGmailSync}
-          disabled={isSyncingGmail}
-        >
-          <Text style={styles.primaryButtonText}>
-            {isSyncingGmail ? 'Syncing...' : 'Run mock sync'}
-          </Text>
-        </Pressable>
       </View>
 
-      <Text style={styles.heading}>Data management</Text>
-      <View style={styles.card}>
-        <Text style={styles.bodyText}>
-          Exports and local encryption are not wired up yet. Use this space later for CSV
-          export, local-only mode, and scheduled backups.
-        </Text>
+      <View style={styles.section}>
+        <TouchableOpacity
+          style={[styles.button, styles.dangerButton]}
+          onPress={handleSignOut}
+          disabled={authLoading}
+        >
+          {authLoading ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.buttonText}>Sign Out</Text>
+          )}
+        </TouchableOpacity>
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
-    backgroundColor: '#F8FAFC',
-    gap: 20,
-    paddingBottom: 40,
+    flex: 1,
+    backgroundColor: '#f8fafc',
   },
-  heading: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#0F172A',
+  section: {
+    padding: 16,
   },
-  subheading: {
-    fontSize: 16,
+  sectionTitle: {
+    fontSize: 14,
     fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 10,
+    color: '#64748b',
+    marginBottom: 8,
+    textTransform: 'uppercase',
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
     padding: 16,
-    gap: 16,
     shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 4,
     elevation: 1,
   },
-  accountRow: {
+  row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 16,
   },
-  accountName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#0F172A',
-  },
-  accountMeta: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: '#E2E8F0',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#CBD5F5',
-    borderRadius: 10,
-    padding: 12,
-    backgroundColor: '#FFFFFF',
-    fontSize: 16,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  toggle: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#CBD5F5',
-    backgroundColor: '#FFFFFF',
-  },
-  toggleActive: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  toggleText: {
-    color: '#2563EB',
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  toggleTextActive: {
-    color: '#FFFFFF',
-  },
-  primaryButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    backgroundColor: '#2563EB',
-    alignItems: 'center',
-  },
-  primaryButtonDisabled: {
-    opacity: 0.6,
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  secondaryButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#2563EB',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  secondaryButtonText: {
-    color: '#2563EB',
-    fontWeight: '600',
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 12,
-    flexWrap: 'wrap',
-  },
-  bodyText: {
+  label: {
     fontSize: 14,
-    color: '#475569',
-    lineHeight: 20,
+    color: '#64748b',
+    marginBottom: 4,
+  },
+  value: {
+    fontSize: 16,
+    color: '#1e293b',
   },
   status: {
-    fontSize: 13,
-    color: '#0F172A',
+    fontSize: 16,
+    color: '#ef4444',
+    fontWeight: '500',
+  },
+  connected: {
+    color: '#22c55e',
+  },
+  gmailEmail: {
+    fontSize: 14,
+    color: '#64748b',
+    marginTop: 4,
+  },
+  buttonGroup: {
+    gap: 12,
+  },
+  button: {
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  primaryButton: {
+    backgroundColor: '#3b82f6',
+  },
+  outlineButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#3b82f6',
+  },
+  dangerButton: {
+    backgroundColor: '#ef4444',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  outlineButtonText: {
+    color: '#3b82f6',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  lastSync: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginTop: 12,
+    textAlign: 'center',
   },
 });

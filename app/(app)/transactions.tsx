@@ -1,133 +1,67 @@
-import { useMemo, useState } from 'react';
-import {
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-
-import { TransactionItem } from '@/src/components/TransactionItem';
-import { useAppStore } from '@/src/store/useStore';
-import { TransactionDirection } from '@/src/types';
-import { useShallow } from 'zustand/react/shallow';
-
-const directionLabels: Record<TransactionDirection | 'all', string> = {
-  all: 'All',
-  in: 'Income',
-  out: 'Expense',
-};
+import { useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, RefreshControl } from 'react-native';
+import { useStore } from '../../src/store/useStore';
 
 export default function TransactionsScreen() {
-  const { filters, setFilters, accounts, getVisibleTransactions } = useAppStore(
-    useShallow((state) => ({
-      filters: state.filters,
-      setFilters: state.setFilters,
-      accounts: state.accounts,
-      getVisibleTransactions: state.getVisibleTransactions,
-    }))
+  const { transactions, transactionsLoading, loadTransactions, session } = useStore();
+
+  useEffect(() => {
+    if (session) {
+      loadTransactions();
+    }
+  }, [session, loadTransactions]);
+
+  const renderTransaction = ({ item }: { item: typeof transactions[0] }) => (
+    <View style={styles.transactionCard}>
+      <View style={styles.transactionHeader}>
+        <Text style={styles.transactionDesc} numberOfLines={1}>
+          {item.description}
+        </Text>
+        <Text
+          style={[
+            styles.transactionAmount,
+            item.direction === 'out' ? styles.spent : styles.income,
+          ]}
+        >
+          {item.direction === 'out' ? '-' : '+'}${item.amount.toFixed(2)}
+        </Text>
+      </View>
+      <View style={styles.transactionMeta}>
+        <Text style={styles.category}>{item.category || 'Uncategorized'}</Text>
+        <Text style={styles.date}>
+          {new Date(item.transactionDate).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          })}
+        </Text>
+      </View>
+      {item.sourceEmail && (
+        <Text style={styles.source} numberOfLines={1}>
+          From: {item.sourceEmail}
+        </Text>
+      )}
+    </View>
   );
-  const [categoryFilter, setCategoryFilter] = useState(filters.category ?? '');
-
-  const transactions = useMemo(() => getVisibleTransactions(), [getVisibleTransactions, filters]);
-
-  const handleDirectionChange = (direction: TransactionDirection | 'all') => {
-    setFilters({
-      ...filters,
-      direction: direction === 'all' ? undefined : direction,
-    });
-  };
-
-  const handleAccountChange = (accountId: number | undefined) => {
-    setFilters({
-      ...filters,
-      accountId,
-    });
-  };
-
-  const applyCategoryFilter = () => {
-    setFilters({
-      ...filters,
-      category: categoryFilter.length ? categoryFilter : undefined,
-    });
-  };
 
   return (
     <View style={styles.container}>
-      <View style={styles.filters}>
-        <Text style={styles.filtersTitle}>Filters</Text>
-        <View style={styles.filterRow}>
-          {(Object.keys(directionLabels) as Array<TransactionDirection | 'all'>).map((key) => (
-            <Pressable
-              key={key}
-              style={[
-                styles.filterChip,
-                filters.direction === key || (key === 'all' && !filters.direction)
-                  ? styles.filterChipActive
-                  : null,
-              ]}
-              onPress={() => handleDirectionChange(key)}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  filters.direction === key || (key === 'all' && !filters.direction)
-                    ? styles.filterChipTextActive
-                    : null,
-                ]}
-              >
-                {directionLabels[key]}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <View style={styles.filterRow}>
-          {accounts.map((account) => (
-            <Pressable
-              key={account.id}
-              style={[
-                styles.filterChip,
-                filters.accountId === account.id ? styles.filterChipActive : null,
-              ]}
-              onPress={() =>
-                handleAccountChange(
-                  filters.accountId === account.id ? undefined : account.id
-                )
-              }
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  filters.accountId === account.id ? styles.filterChipTextActive : null,
-                ]}
-              >
-                {account.name}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <View style={styles.categoryFilter}>
-          <TextInput
-            placeholder="Category contains..."
-            value={categoryFilter}
-            onChangeText={setCategoryFilter}
-            onSubmitEditing={applyCategoryFilter}
-            style={styles.categoryInput}
-          />
-          <Pressable style={styles.applyButton} onPress={applyCategoryFilter}>
-            <Text style={styles.applyButtonText}>Apply</Text>
-          </Pressable>
-        </View>
-      </View>
-
       <FlatList
         data={transactions}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => <TransactionItem transaction={item} />}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={<Text style={styles.empty}>No transactions match the filters.</Text>}
+        renderItem={renderTransaction}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.list}
+        refreshControl={
+          <RefreshControl refreshing={transactionsLoading} onRefresh={loadTransactions} />
+        }
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={styles.emptyTitle}>No Transactions</Text>
+            <Text style={styles.emptyText}>
+              Connect your Gmail in Settings to sync transactions from UOB and Revolut emails.
+            </Text>
+          </View>
+        }
       />
     </View>
   );
@@ -136,80 +70,82 @@ export default function TransactionsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#f8fafc',
   },
-  filters: {
+  list: {
     padding: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: '#E2E8F0',
   },
-  filtersTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#0F172A',
+  transactionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  transactionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 8,
   },
-  filterRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
-  },
-  filterChip: {
-    borderWidth: 1,
-    borderColor: '#CBD5F5',
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: '#FFFFFF',
-  },
-  filterChipActive: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  filterChipText: {
-    color: '#2563EB',
-    fontSize: 13,
+  transactionDesc: {
+    fontSize: 16,
     fontWeight: '500',
-  },
-  filterChipTextActive: {
-    color: '#FFFFFF',
-  },
-  categoryFilter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  categoryInput: {
+    color: '#1e293b',
     flex: 1,
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#CBD5F5',
-    backgroundColor: '#F1F5F9',
+    marginRight: 12,
   },
-  applyButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-  },
-  applyButtonText: {
-    color: '#FFFFFF',
+  transactionAmount: {
+    fontSize: 18,
     fontWeight: '600',
   },
-  separator: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: '#E2E8F0',
+  spent: {
+    color: '#ef4444',
   },
-  listContent: {
-    padding: 16,
-    backgroundColor: '#FFFFFF',
+  income: {
+    color: '#22c55e',
+  },
+  transactionMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  category: {
+    fontSize: 14,
+    color: '#3b82f6',
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  date: {
+    fontSize: 14,
+    color: '#64748b',
+  },
+  source: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginTop: 8,
   },
   empty: {
-    paddingVertical: 40,
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#64748b',
     textAlign: 'center',
-    color: '#64748B',
+    lineHeight: 20,
   },
 });

@@ -1,162 +1,229 @@
 import { create } from 'zustand';
-import { format } from 'date-fns';
-
-import {
-  initializeDatabase,
-  getTransactionsForMonth,
-  insertTransaction,
-  updateTransactionCategory,
-  getAccounts,
-  insertAccount,
-  getCategories,
-  insertCategoryIfNotExists,
-} from '@/src/lib/db';
-import {
-  Account,
-  CategorizedTotal,
-  MonthlySummary,
-  Transaction,
-  TransactionDirection,
-  TransactionInput,
-} from '@/src/types';
-
-export interface Filters {
-  category?: string;
-  direction?: TransactionDirection;
-  accountId?: number;
-}
+import { Platform } from 'react-native';
+import type { Session } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
+import * as db from '../lib/db';
+import * as sync from '../lib/sync';
+import type { Transaction, TransactionInput, GmailAuthState } from '../types';
+import { gmailService } from '../services/gmail';
+import { parseEmails } from '../services/parser';
+import Constants from 'expo-constants';
 
 interface AppState {
-  loading: boolean;
-  bootstrapped: boolean;
+  // Auth
+  session: Session | null;
+  authLoading: boolean;
+  initAuth: () => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
+
+  // Transactions
   transactions: Transaction[];
-  accounts: Account[];
-  categories: import('@/src/types').Category[];
-  selectedMonth: string; // YYYY-MM
-  filters: Filters;
-  bootstrap: () => Promise<void>;
-  refreshTransactions: (monthKey?: string) => Promise<void>;
-  addTransaction: (input: TransactionInput) => Promise<void>;
-  updateCategory: (transactionId: number, category: string) => Promise<void>;
-  addAccount: (payload: { name: string; type: Account['type']; currency: string }) => Promise<void>;
-  addCategory: (name: string) => Promise<void>;
-  setSelectedMonth: (monthKey: string) => void;
-  setFilters: (filters: Filters) => void;
-  getVisibleTransactions: () => Transaction[];
-  getMonthlySummary: (monthKey?: string) => MonthlySummary;
-  getTopCategories: (monthKey?: string, limit?: number) => CategorizedTotal[];
+  transactionsLoading: boolean;
+  loadTransactions: () => Promise<void>;
+  addTransaction: (input: TransactionInput) => Promise<Transaction | null>;
+
+  // Gmail
+  gmailState: GmailAuthState;
+  gmailLoading: boolean;
+  initGmail: () => void;
+  connectGmail: () => Promise<void>;
+  disconnectGmail: () => Promise<void>;
+  syncEmails: () => Promise<number>;
+
+  // Sync
+  syncLoading: boolean;
+  syncData: () => Promise<void>;
 }
 
-const currentMonthKey = () => format(new Date(), 'yyyy-MM');
+let authSubscription: { unsubscribe: () => void } | null = null;
 
-export const useAppStore = create<AppState>()((set, get) => ({
-  loading: false,
-  bootstrapped: false,
-  transactions: [],
-  accounts: [],
-  categories: [],
-  selectedMonth: currentMonthKey(),
-  filters: {},
-  bootstrap: async () => {
-    const state = get();
-    if (state.bootstrapped || state.loading) {
-      return;
-    }
-    set({ loading: true });
+export const useStore = create<AppState>()((set, get) => ({
+  // Auth state
+  session: null,
+  authLoading: true,
+
+  initAuth: async () => {
+    set({ authLoading: true });
     try {
-      await initializeDatabase();
-      const [accounts, categories, transactions] = await Promise.all([
-        getAccounts(),
-        getCategories(),
-        getTransactionsForMonth(state.selectedMonth),
-      ]);
-      set({
-        accounts,
-        categories,
-        transactions,
-        bootstrapped: true,
-        loading: false,
-      });
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error('Auth init error:', error);
+        // Clear stale session data to stop retry loops
+        await supabase.auth.signOut().catch(() => {});
+        set({ session: null, authLoading: false });
+        return;
+      }
+      set({ session: data.session, authLoading: false });
+
+      if (!authSubscription) {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+          set({ session });
+          if (session) {
+            get().loadTransactions();
+          }
+        });
+        authSubscription = subscription;
+      }
     } catch (error) {
-      console.error('Failed to bootstrap database', error);
-      set({ loading: false });
+      console.error('Auth init failed:', error);
+      // Clear stale session data on failure
+      await supabase.auth.signOut().catch(() => {});
+      set({ session: null, authLoading: false });
+    }
+  },
+
+  signIn: async (email, password) => {
+    set({ authLoading: true });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    set({ authLoading: false });
+    if (error) throw error;
+  },
+
+  signUp: async (email, password) => {
+    set({ authLoading: true });
+    const { error } = await supabase.auth.signUp({ email, password });
+    set({ authLoading: false });
+    if (error) throw error;
+  },
+
+  signOut: async () => {
+    set({ authLoading: true });
+    await supabase.auth.signOut();
+    set({ authLoading: false, session: null, transactions: [] });
+  },
+
+  // Transactions state
+  transactions: [],
+  transactionsLoading: false,
+
+  loadTransactions: async () => {
+    const userId = get().session?.user?.id;
+    if (!userId) return;
+
+    set({ transactionsLoading: true });
+    try {
+      let transactions: Transaction[];
+
+      if (Platform.OS === 'web') {
+        transactions = await sync.getTransactionsFromSupabase(userId);
+      } else {
+        transactions = await db.getTransactions(userId);
+      }
+
+      set({ transactions, transactionsLoading: false });
+    } catch (error) {
+      console.error('Load transactions failed:', error);
+      set({ transactionsLoading: false });
+    }
+  },
+
+  addTransaction: async (input) => {
+    const userId = get().session?.user?.id;
+    if (!userId) return null;
+
+    try {
+      let transaction: Transaction | null;
+
+      if (Platform.OS === 'web') {
+        transaction = await sync.saveTransactionToSupabase(userId, input);
+      } else {
+        transaction = await db.insertTransaction(userId, input);
+      }
+
+      if (transaction) {
+        set((state) => ({
+          transactions: [transaction!, ...state.transactions],
+        }));
+      }
+
+      return transaction;
+    } catch (error) {
+      console.error('Add transaction failed:', error);
+      return null;
+    }
+  },
+
+  // Gmail state
+  gmailState: { isConnected: false },
+  gmailLoading: false,
+
+  initGmail: async () => {
+    const extra = Constants.expoConfig?.extra as { googleClientId?: string } | undefined;
+    const clientId = extra?.googleClientId;
+    if (clientId) {
+      gmailService.initialize(clientId);
+
+      // Check for OAuth callback (returning from Google)
+      const wasCallback = await gmailService.checkOAuthCallback();
+      if (wasCallback) {
+        set({ gmailState: gmailService.getState() });
+        return;
+      }
+
+      set({ gmailState: gmailService.getState() });
+    }
+  },
+
+  connectGmail: async () => {
+    set({ gmailLoading: true });
+    try {
+      const state = await gmailService.connect();
+      set({ gmailState: state, gmailLoading: false });
+    } catch (error) {
+      console.error('Gmail connect failed:', error);
+      set({ gmailLoading: false });
       throw error;
     }
   },
-  refreshTransactions: async (monthKey) => {
-    const key = monthKey ?? get().selectedMonth;
-    const transactions = await getTransactionsForMonth(key);
-    set({ transactions });
+
+  disconnectGmail: async () => {
+    set({ gmailLoading: true });
+    const state = await gmailService.disconnect();
+    set({ gmailState: state, gmailLoading: false });
   },
-  addTransaction: async (input) => {
-    await insertTransaction(input);
-    await get().refreshTransactions();
-  },
-  updateCategory: async (transactionId, category) => {
-    await updateTransactionCategory(transactionId, category);
-    set({
-      transactions: get().transactions.map((txn) =>
-        txn.id === transactionId ? { ...txn, category, edited: true } : txn
-      ),
-    });
-  },
-  addAccount: async ({ name, type, currency }) => {
-    await insertAccount(name, type, currency);
-    const accounts = await getAccounts();
-    set({ accounts });
-  },
-  addCategory: async (name: string) => {
-    await insertCategoryIfNotExists(name.trim());
-    const categories = await getCategories();
-    set({ categories });
-  },
-  setSelectedMonth: (monthKey) => {
-    set({ selectedMonth: monthKey });
-    void get().refreshTransactions(monthKey);
-  },
-  setFilters: (filters) => set({ filters }),
-  getVisibleTransactions: () => {
-    const { transactions, filters } = get();
-    return transactions.filter((txn) => {
-      if (filters.category && txn.category !== filters.category) return false;
-      if (filters.direction && txn.direction !== filters.direction) return false;
-      if (
-        filters.accountId !== undefined &&
-        filters.accountId !== null &&
-        txn.accountId !== filters.accountId
-      )
-        return false;
-      return true;
-    });
-  },
-  getMonthlySummary: (monthKey) => {
-    const key = monthKey ?? get().selectedMonth;
-    const base: MonthlySummary = { monthKey: key, totalIn: 0, totalOut: 0, net: 0 };
-    const data = get().transactions;
-    for (const txn of data) {
-      if (!txn.txnDatetime.startsWith(key)) continue;
-      if (txn.direction === 'in') {
-        base.totalIn += txn.amountNative;
-      } else {
-        base.totalOut += txn.amountNative;
+
+  syncEmails: async () => {
+    const userId = get().session?.user?.id;
+    if (!userId) return 0;
+
+    set({ gmailLoading: true });
+    try {
+      const messages = await gmailService.fetchRecentMessages();
+      const inputs = parseEmails(messages);
+
+      let added = 0;
+      for (const input of inputs) {
+        const result = await get().addTransaction(input);
+        if (result) added++;
       }
+
+      set({ gmailState: gmailService.getState(), gmailLoading: false });
+      return added;
+    } catch (error) {
+      console.error('Email sync failed:', error);
+      set({ gmailLoading: false });
+      throw error;
     }
-    base.net = base.totalIn - base.totalOut;
-    return base;
   },
-  getTopCategories: (monthKey, limit = 5) => {
-    const key = monthKey ?? get().selectedMonth;
-    const totals = new Map<string, number>();
-    for (const txn of get().transactions) {
-      if (!txn.txnDatetime.startsWith(key)) continue;
-      if (!txn.category) continue;
-      const current = totals.get(txn.category) ?? 0;
-      const amount = txn.amountNative * (txn.direction === 'out' ? 1 : -1);
-      totals.set(txn.category, current + amount);
+
+  // Sync state
+  syncLoading: false,
+
+  syncData: async () => {
+    const userId = get().session?.user?.id;
+    if (!userId || Platform.OS === 'web') return;
+
+    set({ syncLoading: true });
+    try {
+      await sync.syncToSupabase(userId);
+      await sync.syncFromSupabase(userId);
+      await get().loadTransactions();
+      set({ syncLoading: false });
+    } catch (error) {
+      console.error('Sync failed:', error);
+      set({ syncLoading: false });
     }
-    return Array.from(totals.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, limit)
-      .map(([category, total]) => ({ category, total }));
   },
 }));

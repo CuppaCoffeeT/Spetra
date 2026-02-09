@@ -1,313 +1,211 @@
-import { SQLiteDatabase, openDatabaseAsync } from 'expo-sqlite';
-import { MIGRATIONS } from '@/src/lib/schema';
-import {
-  Account,
-  Transaction,
-  TransactionInput,
-  TransactionDirection,
-  Category,
-} from '@/src/types';
+import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
+import type { Transaction, TransactionInput } from '../types';
 
-const DB_NAME = 'wallet-tracker.db';
+const DB_NAME = 'spend-tracker.db';
 
-let dbInstance: SQLiteDatabase | null = null;
+let db: SQLite.SQLiteDatabase | null = null;
 
-export const getDb = async () => {
-  if (!dbInstance) {
-    dbInstance = await openDatabaseAsync(DB_NAME);
-    await dbInstance.execAsync('PRAGMA foreign_keys = ON;');
+export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
+  if (db) return db;
+
+  if (Platform.OS === 'web') {
+    // SQLite not available on web - use in-memory store
+    throw new Error('SQLite not available on web');
   }
-  return dbInstance;
-};
 
-export const initializeDatabase = async () => {
-  const db = await getDb();
-  for (const statement of MIGRATIONS) {
-    await db.execAsync(statement);
+  db = await SQLite.openDatabaseAsync(DB_NAME);
+  await initializeSchema(db);
+  return db;
+}
+
+async function initializeSchema(database: SQLite.SQLiteDatabase): Promise<void> {
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS transactions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      amount REAL NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'SGD',
+      direction TEXT NOT NULL CHECK (direction IN ('in', 'out')),
+      description TEXT NOT NULL,
+      category TEXT,
+      transaction_date TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'email',
+      source_email TEXT,
+      dedupe_hash TEXT UNIQUE,
+      created_at TEXT NOT NULL,
+      synced_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(transaction_date);
+    CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_transactions_synced ON transactions(synced_at);
+  `);
+}
+
+function generateId(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+export function generateDedupeHash(amount: number, date: string, description: string): string {
+  const key = `${amount}-${date.substring(0, 10)}-${description.substring(0, 30).toLowerCase()}`;
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    const char = key.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
   }
-  await ensureSeedData();
-};
+  return Math.abs(hash).toString(36);
+}
 
-type TransactionRow = {
-  id: number;
-  amount_native: number;
-  currency_native: string;
-  amount_base: number | null;
-  currency_base: string | null;
-  fx_rate: number | null;
-  direction: TransactionDirection;
-  description_raw: string | null;
-  description_clean: string | null;
-  category: string | null;
-  category_confidence: number | null;
-  account_id: number | null;
-  txn_datetime: string;
-  ingested_at: string;
-  source: string;
-  source_meta: string | null;
-  dedupe_hash: string | null;
-  parser_version: string | null;
-  is_transfer: number;
-  is_refund: number;
-  edited: number;
-  notes: string | null;
-};
+export async function insertTransaction(
+  userId: string,
+  input: TransactionInput
+): Promise<Transaction | null> {
+  const database = await getDatabase();
 
-type AccountRow = {
-  id: number;
-  name: string;
-  type: string;
-  currency_default: string;
-};
+  const dedupeHash = generateDedupeHash(input.amount, input.transactionDate, input.description);
 
-type CategoryRow = {
-  id: number;
-  name: string;
-};
-
-const mapTransaction = (row: TransactionRow): Transaction => ({
-  id: row.id,
-  amountNative: row.amount_native,
-  currencyNative: row.currency_native,
-  amountBase: row.amount_base,
-  currencyBase: row.currency_base,
-  fxRate: row.fx_rate,
-  direction: row.direction,
-  descriptionRaw: row.description_raw,
-  descriptionClean: row.description_clean,
-  category: row.category,
-  categoryConfidence: row.category_confidence,
-  accountId: row.account_id,
-  txnDatetime: row.txn_datetime,
-  ingestedAt: row.ingested_at,
-  source: row.source as Transaction['source'],
-  sourceMeta: row.source_meta,
-  dedupeHash: row.dedupe_hash,
-  parserVersion: row.parser_version,
-  isTransfer: Boolean(row.is_transfer),
-  isRefund: Boolean(row.is_refund),
-  edited: Boolean(row.edited),
-  notes: row.notes,
-});
-
-const mapAccount = (row: AccountRow): Account => ({
-  id: row.id,
-  name: row.name,
-  type: row.type as Account['type'],
-  currencyDefault: row.currency_default,
-});
-
-const mapCategory = (row: CategoryRow): Category => ({ id: row.id, name: row.name });
-
-export const getTransactions = async (): Promise<Transaction[]> => {
-  const db = await getDb();
-  const rows = await db.getAllAsync<TransactionRow>(
-    'SELECT * FROM transactions ORDER BY datetime(txn_datetime) DESC;'
+  // Check for duplicate
+  const existing = await database.getFirstAsync<{ id: string }>(
+    'SELECT id FROM transactions WHERE dedupe_hash = ?',
+    [dedupeHash]
   );
-  return rows.map(mapTransaction);
-};
 
-export const getTransactionsForMonth = async (isoMonth: string) => {
-  const db = await getDb();
-  const rows = await db.getAllAsync<TransactionRow>(
-    `SELECT * FROM transactions WHERE substr(txn_datetime, 1, 7) = ? ORDER BY datetime(txn_datetime) DESC;`,
-    [isoMonth]
-  );
-  return rows.map(mapTransaction);
-};
+  if (existing) {
+    return null; // Duplicate
+  }
 
-export const insertTransaction = async (input: TransactionInput) => {
-  const db = await getDb();
+  const id = generateId();
   const now = new Date().toISOString();
-  const {
-    amountNative,
-    currencyNative,
-    direction,
-    description,
-    category,
-    txnDatetime,
-    accountId,
-    source = 'manual',
-    notes,
-  } = input;
 
-  const result = await db.runAsync(
-    `INSERT INTO transactions (
-      amount_native,
-      currency_native,
-      direction,
-      description_raw,
-      description_clean,
-      category,
-      txn_datetime,
-      ingested_at,
-      source,
-      account_id,
-      notes
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+  await database.runAsync(
+    `INSERT INTO transactions (id, user_id, amount, currency, direction, description, category, transaction_date, source, source_email, dedupe_hash, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      amountNative,
-      currencyNative,
-      direction,
-      description,
-      description,
-      category ?? null,
-      txnDatetime,
+      id,
+      userId,
+      input.amount,
+      input.currency,
+      input.direction,
+      input.description,
+      input.category || null,
+      input.transactionDate,
+      input.source,
+      input.sourceEmail || null,
+      dedupeHash,
       now,
-      source,
-      accountId ?? null,
-      notes ?? null,
     ]
   );
 
-  return result.lastInsertRowId ?? null;
-};
+  return {
+    id,
+    userId,
+    amount: input.amount,
+    currency: input.currency,
+    direction: input.direction,
+    description: input.description,
+    category: input.category || null,
+    transactionDate: input.transactionDate,
+    source: input.source,
+    sourceEmail: input.sourceEmail || null,
+    dedupeHash,
+    createdAt: now,
+    syncedAt: null,
+  };
+}
 
-export const updateTransactionCategory = async (
-  transactionId: number,
-  category: string
-) => {
-  const db = await getDb();
-  await db.runAsync(
-    `UPDATE transactions SET category = ?, edited = 1 WHERE id = ?;`,
-    [category, transactionId]
+export async function getTransactions(userId: string): Promise<Transaction[]> {
+  const database = await getDatabase();
+
+  const rows = await database.getAllAsync<{
+    id: string;
+    user_id: string;
+    amount: number;
+    currency: string;
+    direction: string;
+    description: string;
+    category: string | null;
+    transaction_date: string;
+    source: string;
+    source_email: string | null;
+    dedupe_hash: string;
+    created_at: string;
+    synced_at: string | null;
+  }>(
+    'SELECT * FROM transactions WHERE user_id = ? ORDER BY transaction_date DESC',
+    [userId]
   );
-};
 
-export const getAccounts = async (): Promise<Account[]> => {
-  const db = await getDb();
-  const rows = await db.getAllAsync<AccountRow>(
-    'SELECT * FROM accounts ORDER BY name COLLATE NOCASE;'
+  return rows.map((row) => ({
+    id: row.id,
+    userId: row.user_id,
+    amount: row.amount,
+    currency: row.currency,
+    direction: row.direction as 'in' | 'out',
+    description: row.description,
+    category: row.category,
+    transactionDate: row.transaction_date,
+    source: row.source as 'email' | 'manual',
+    sourceEmail: row.source_email,
+    dedupeHash: row.dedupe_hash,
+    createdAt: row.created_at,
+    syncedAt: row.synced_at,
+  }));
+}
+
+export async function getUnsyncedTransactions(userId: string): Promise<Transaction[]> {
+  const database = await getDatabase();
+
+  const rows = await database.getAllAsync<{
+    id: string;
+    user_id: string;
+    amount: number;
+    currency: string;
+    direction: string;
+    description: string;
+    category: string | null;
+    transaction_date: string;
+    source: string;
+    source_email: string | null;
+    dedupe_hash: string;
+    created_at: string;
+    synced_at: string | null;
+  }>(
+    'SELECT * FROM transactions WHERE user_id = ? AND synced_at IS NULL',
+    [userId]
   );
-  return rows.map(mapAccount);
-};
 
-export const getCategories = async (): Promise<Category[]> => {
-  const db = await getDb();
-  const rows = await db.getAllAsync<CategoryRow>(
-    'SELECT * FROM categories ORDER BY name COLLATE NOCASE;'
+  return rows.map((row) => ({
+    id: row.id,
+    userId: row.user_id,
+    amount: row.amount,
+    currency: row.currency,
+    direction: row.direction as 'in' | 'out',
+    description: row.description,
+    category: row.category,
+    transactionDate: row.transaction_date,
+    source: row.source as 'email' | 'manual',
+    sourceEmail: row.source_email,
+    dedupeHash: row.dedupe_hash,
+    createdAt: row.created_at,
+    syncedAt: row.synced_at,
+  }));
+}
+
+export async function markAsSynced(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+
+  const database = await getDatabase();
+  const now = new Date().toISOString();
+  const placeholders = ids.map(() => '?').join(',');
+
+  await database.runAsync(
+    `UPDATE transactions SET synced_at = ? WHERE id IN (${placeholders})`,
+    [now, ...ids]
   );
-  return rows.map(mapCategory);
-};
-
-export const insertAccount = async (
-  name: string,
-  type: Account['type'],
-  currencyDefault: string
-) => {
-  const db = await getDb();
-  const result = await db.runAsync(
-    `INSERT INTO accounts (name, type, currency_default) VALUES (?, ?, ?);`,
-    [name, type, currencyDefault]
-  );
-  return result.lastInsertRowId ?? null;
-};
-
-export const insertCategoryIfNotExists = async (name: string) => {
-  const db = await getDb();
-  await db.runAsync(`INSERT OR IGNORE INTO categories (name) VALUES (?);`, [name]);
-  const row = await db.getFirstAsync<CategoryRow>(
-    `SELECT id, name FROM categories WHERE name = ?;`,
-    [name]
-  );
-  return row ? row.id : null;
-};
-
-export const getTransactionCount = async () => {
-  const db = await getDb();
-  const row = await db.getFirstAsync<{ count: number }>(
-    'SELECT COUNT(*) as count FROM transactions;'
-  );
-  return row?.count ?? 0;
-};
-
-export const ensureSeedData = async () => {
-  const db = await getDb();
-  const accountCountRow = await db.getFirstAsync<{ count: number }>(
-    'SELECT COUNT(*) as count FROM accounts;'
-  );
-  if (!accountCountRow?.count) {
-    await db.runAsync(
-      `INSERT INTO accounts (name, type, currency_default) VALUES
-        ('UOB Current', 'bank', 'SGD'),
-        ('GrabPay Wallet', 'wallet', 'SGD');`
-    );
-  }
-
-  const categoryCountRow = await db.getFirstAsync<{ count: number }>(
-    'SELECT COUNT(*) as count FROM categories;'
-  );
-  if (!categoryCountRow?.count) {
-    await db.runAsync(
-      `INSERT INTO categories (name) VALUES
-        ('Food'),
-        ('Transport'),
-        ('Groceries'),
-        ('Shopping'),
-        ('Income'),
-        ('Bills');`
-    );
-  }
-
-  const transactionCount = await getTransactionCount();
-  if (transactionCount === 0) {
-    const now = new Date();
-    const sample = [
-      {
-        amount_native: -18.4,
-        currency_native: 'SGD',
-        direction: 'out',
-        description: 'Lunch at Amoy Street Food Centre',
-        category: 'Food',
-        account_id: 1,
-        txn_datetime: new Date(now.getFullYear(), now.getMonth(), 5, 12, 30).toISOString(),
-      },
-      {
-        amount_native: -12.0,
-        currency_native: 'SGD',
-        direction: 'out',
-        description: 'Grab Transport Ride',
-        category: 'Transport',
-        account_id: 2,
-        txn_datetime: new Date(now.getFullYear(), now.getMonth(), 6, 9, 15).toISOString(),
-      },
-      {
-        amount_native: 2500,
-        currency_native: 'SGD',
-        direction: 'in',
-        description: 'Salary Credit',
-        category: 'Income',
-        account_id: 1,
-        txn_datetime: new Date(now.getFullYear(), now.getMonth(), 1, 10, 0).toISOString(),
-      },
-    ];
-
-    for (const item of sample) {
-      await db.runAsync(
-        `INSERT INTO transactions (
-          amount_native,
-          currency_native,
-          direction,
-          description_raw,
-          description_clean,
-          category,
-          txn_datetime,
-          ingested_at,
-          source,
-          account_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'email', ?);`,
-        [
-          Math.abs(item.amount_native),
-          item.currency_native,
-          item.direction,
-          item.description,
-          item.description,
-          item.category,
-          item.txn_datetime,
-          now.toISOString(),
-          item.account_id,
-        ]
-      );
-    }
-  }
-};
+}
