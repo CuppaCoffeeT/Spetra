@@ -9,7 +9,7 @@ import {
 import type { DrawerContentComponentProps } from '@react-navigation/drawer';
 import { useEffect, useRef } from 'react';
 import * as SplashScreen from 'expo-splash-screen';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/src/components/useColorScheme';
@@ -17,7 +17,7 @@ import { useAppStore } from '@/src/store/useStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useAuth } from '@/src/store/auth';
 
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const icons = {
   home: 'home',
@@ -28,9 +28,10 @@ const icons = {
 
 export default function AppDrawerLayout() {
   const colorScheme = useColorScheme();
-  const { bootstrapped, bootstrap } = useAppStore(
+  const { bootstrapped, bootstrapError, bootstrap } = useAppStore(
     useShallow((state) => ({
       bootstrapped: state.bootstrapped,
+      bootstrapError: state.bootstrapError,
       bootstrap: state.bootstrap,
     }))
   );
@@ -44,7 +45,7 @@ export default function AppDrawerLayout() {
 
   useEffect(() => {
     if (bootstrapped) {
-      SplashScreen.hideAsync();
+      SplashScreen.hideAsync().catch(() => {});
     }
   }, [bootstrapped]);
 
@@ -59,6 +60,42 @@ export default function AppDrawerLayout() {
         }}
       >
         <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  if (bootstrapError) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 32,
+          backgroundColor: colorScheme === 'dark' ? '#0F172A' : '#F8FAFC',
+        }}
+      >
+        <Text style={{ fontSize: 18, fontWeight: '600', color: '#DC2626', marginBottom: 12 }}>
+          Failed to load data
+        </Text>
+        <Text style={{ fontSize: 14, color: '#475569', textAlign: 'center', marginBottom: 20 }}>
+          {bootstrapError}
+        </Text>
+        <Pressable
+          style={{
+            backgroundColor: '#2563EB',
+            paddingVertical: 12,
+            paddingHorizontal: 24,
+            borderRadius: 10,
+          }}
+          onPress={() => {
+            hasBootstrappedRef.current = false;
+            useAppStore.setState({ bootstrapped: false, bootstrapError: null, loading: false });
+            void bootstrap();
+          }}
+        >
+          <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>Retry</Text>
+        </Pressable>
       </View>
     );
   }

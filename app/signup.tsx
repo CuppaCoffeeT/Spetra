@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Link, router } from 'expo-router';
 
 import { useAuth } from '@/src/store/auth';
 
 export default function SignupScreen() {
-  const { session, loading, init, signUp } = useAuth();
+  const { loading, signUp } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -47,16 +47,6 @@ export default function SignupScreen() {
 
   const confirmValid = requirements.find((item) => item.id === 'match')?.satisfied ?? false;
 
-  useEffect(() => {
-    void init();
-  }, [init]);
-
-  useEffect(() => {
-    if (session) {
-      router.replace('/home');
-    }
-  }, [session]);
-
   const doSignUp = async () => {
     if (!emailValid) {
       setEmailTouched(true);
@@ -87,8 +77,9 @@ export default function SignupScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Create your Wallet Tracker account</Text>
+    <View style={styles.screen}>
+      <View style={styles.container}>
+      <Text style={styles.title}>Create your Spetra account</Text>
 
       <View style={styles.field}>
         <Text style={styles.label}>Email</Text>
@@ -154,17 +145,23 @@ export default function SignupScreen() {
           Back to sign in
         </Link>
       </View>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
-    padding: 20,
     justifyContent: 'center',
-    gap: 16,
+    alignItems: 'center',
     backgroundColor: '#F8FAFC',
+  },
+  container: {
+    width: '100%',
+    maxWidth: 420,
+    padding: 20,
+    gap: 16,
   },
   title: {
     fontSize: 20,

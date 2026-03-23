@@ -11,16 +11,25 @@ interface AuthState {
   signOut: () => Promise<void>;
 }
 
+let _initCalled = false;
+
 export const useAuth = create<AuthState>()((set) => ({
   session: null,
-  loading: false,
+  loading: true,
   init: async () => {
-    set({ loading: true });
-    const { data } = await supabase.auth.getSession();
-    set({ session: data.session ?? null, loading: false });
-    supabase.auth.onAuthStateChange((_event, session) => {
-      set({ session: session ?? null });
-    });
+    if (_initCalled) return;
+    _initCalled = true;
+    try {
+      const { data } = await supabase.auth.getSession();
+      set({ session: data.session ?? null, loading: false });
+      supabase.auth.onAuthStateChange((_event, session) => {
+        set({ session: session ?? null });
+      });
+    } catch (error) {
+      console.error('Auth init failed:', error);
+      _initCalled = false;
+      set({ session: null, loading: false });
+    }
   },
   signIn: async (email, password) => {
     set({ loading: true });
@@ -36,7 +45,11 @@ export const useAuth = create<AuthState>()((set) => ({
   },
   signOut: async () => {
     set({ loading: true });
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('Sign out failed:', error);
+    }
     set({ loading: false, session: null });
   },
 }));

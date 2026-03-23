@@ -1,24 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Link, router } from 'expo-router';
+import { Link } from 'expo-router';
 
 import { useAuth } from '@/src/store/auth';
 
 export default function LoginScreen() {
-  const { session, loading, init, signIn } = useAuth();
+  const { loading, signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    void init();
-  }, [init]);
-
-  useEffect(() => {
-    if (session) {
-      router.replace('/home');
-    }
-  }, [session]);
 
   const doSignIn = async () => {
     try {
@@ -33,8 +23,9 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Sign in to Wallet Tracker</Text>
+    <View style={styles.screen}>
+      <View style={styles.container}>
+      <Text style={styles.title}>Sign in to Spetra</Text>
       <View style={styles.field}>
         <Text style={styles.label}>Email</Text>
         <TextInput
@@ -63,17 +54,23 @@ export default function LoginScreen() {
       <Link href="/signup" style={styles.secondaryLink}>
         Create an account
       </Link>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
-    padding: 20,
     justifyContent: 'center',
-    gap: 16,
+    alignItems: 'center',
     backgroundColor: '#F8FAFC',
+  },
+  container: {
+    width: '100%',
+    maxWidth: 420,
+    padding: 20,
+    gap: 16,
   },
   title: {
     fontSize: 20,

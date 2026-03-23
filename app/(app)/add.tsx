@@ -345,6 +345,9 @@ const styles = StyleSheet.create({
     gap: 16,
     backgroundColor: '#F8FAFC',
     paddingBottom: 60,
+    maxWidth: 720,
+    width: '100%',
+    alignSelf: 'center',
   },
   heading: {
     fontSize: 20,

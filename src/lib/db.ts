@@ -8,6 +8,7 @@ import {
   Category,
 } from '@/src/types';
 
+// Legacy filename kept to preserve existing user databases across updates.
 const DB_NAME = 'wallet-tracker.db';
 
 let dbInstance: SQLiteDatabase | null = null;

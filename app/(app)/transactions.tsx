@@ -20,17 +20,18 @@ const directionLabels: Record<TransactionDirection | 'all', string> = {
 };
 
 export default function TransactionsScreen() {
-  const { filters, setFilters, accounts, getVisibleTransactions } = useAppStore(
+  const { filters, setFilters, accounts, allTransactions, getVisibleTransactions } = useAppStore(
     useShallow((state) => ({
       filters: state.filters,
       setFilters: state.setFilters,
       accounts: state.accounts,
+      allTransactions: state.transactions,
       getVisibleTransactions: state.getVisibleTransactions,
     }))
   );
   const [categoryFilter, setCategoryFilter] = useState(filters.category ?? '');
 
-  const transactions = useMemo(() => getVisibleTransactions(), [getVisibleTransactions, filters]);
+  const transactions = useMemo(() => getVisibleTransactions(), [getVisibleTransactions, filters, allTransactions]);
 
   const handleDirectionChange = (direction: TransactionDirection | 'all') => {
     setFilters({
@@ -137,6 +138,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
+    maxWidth: 720,
+    width: '100%',
+    alignSelf: 'center',
   },
   filters: {
     padding: 16,

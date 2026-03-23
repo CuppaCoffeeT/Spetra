@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "wallet-tracker",
-    "slug": "wallet-tracker",
+    "name": "Spetra",
+    "slug": "spetra",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "wallettracker",
+    "scheme": "spetra",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {

@@ -30,7 +30,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     padding: 16,
-    marginRight: 12,
     backgroundColor: '#FFFFFF',
     shadowColor: '#000',
     shadowOpacity: 0.05,

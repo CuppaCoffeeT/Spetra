@@ -220,6 +220,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
     gap: 20,
     paddingBottom: 40,
+    maxWidth: 720,
+    width: '100%',
+    alignSelf: 'center',
   },
   heading: {
     fontSize: 18,

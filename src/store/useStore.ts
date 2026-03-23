@@ -29,6 +29,7 @@ export interface Filters {
 interface AppState {
   loading: boolean;
   bootstrapped: boolean;
+  bootstrapError: string | null;
   transactions: Transaction[];
   accounts: Account[];
   categories: import('@/src/types').Category[];
@@ -52,6 +53,7 @@ const currentMonthKey = () => format(new Date(), 'yyyy-MM');
 export const useAppStore = create<AppState>()((set, get) => ({
   loading: false,
   bootstrapped: false,
+  bootstrapError: null,
   transactions: [],
   accounts: [],
   categories: [],
@@ -79,8 +81,11 @@ export const useAppStore = create<AppState>()((set, get) => ({
       });
     } catch (error) {
       console.error('Failed to bootstrap database', error);
-      set({ loading: false });
-      throw error;
+      set({
+        loading: false,
+        bootstrapped: true,
+        bootstrapError: error instanceof Error ? error.message : String(error),
+      });
     }
   },
   refreshTransactions: async (monthKey) => {
@@ -118,7 +123,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   getVisibleTransactions: () => {
     const { transactions, filters } = get();
     return transactions.filter((txn) => {
-      if (filters.category && txn.category !== filters.category) return false;
+      if (filters.category && !(txn.category ?? '').toLowerCase().includes(filters.category.toLowerCase())) return false;
       if (filters.direction && txn.direction !== filters.direction) return false;
       if (
         filters.accountId !== undefined &&

@@ -1,6 +1,6 @@
-# Wallet Tracker
+# Spetra
 
-Personal Spend Tracker built with Expo Router + React Native, local SQLite storage, and optional Supabase sync/auth scaffolding.
+Personal finance tracker built with Expo Router + React Native, local SQLite storage, and optional Supabase sync/auth scaffolding.
 
 ## Prerequisites
 
@@ -12,7 +12,7 @@ Personal Spend Tracker built with Expo Router + React Native, local SQLite stora
 ## 1. Install dependencies
 
 ```bash
-cd wallet-tracker
+cd Spetra
 npm install
 ```
 
