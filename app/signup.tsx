@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Link, router } from 'expo-router';
 
 import { useAuth } from '@/src/store/auth';
@@ -12,6 +12,10 @@ export default function SignupScreen() {
   const [emailTouched, setEmailTouched] = useState(false);
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [confirmTouched, setConfirmTouched] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const confirmRef = useRef<TextInput>(null);
 
   const emailValid = useMemo(() => /.+@.+\..+/.test(email.trim()), [email]);
 
@@ -48,31 +52,43 @@ export default function SignupScreen() {
   const confirmValid = requirements.find((item) => item.id === 'match')?.satisfied ?? false;
 
   const doSignUp = async () => {
+    setError(null);
+    setSuccess(null);
     if (!emailValid) {
       setEmailTouched(true);
-      Alert.alert('Invalid email', 'Please enter a valid email address.');
+      const msg = 'Please enter a valid email address.';
+      if (Platform.OS === 'web') setError(msg);
+      else Alert.alert('Invalid email', msg);
       return;
     }
     if (!passwordValid) {
       setPasswordTouched(true);
-      Alert.alert('Weak password', 'Please satisfy all password requirements.');
+      const msg = 'Please satisfy all password requirements.';
+      if (Platform.OS === 'web') setError(msg);
+      else Alert.alert('Weak password', msg);
       return;
     }
     if (!confirmValid) {
       setConfirmTouched(true);
-      Alert.alert('Mismatch', 'Passwords do not match.');
+      const msg = 'Passwords do not match.';
+      if (Platform.OS === 'web') setError(msg);
+      else Alert.alert('Mismatch', msg);
       return;
     }
     try {
       const trimmed = email.trim();
       await signUp(trimmed, password);
-      Alert.alert(
-        'Confirm your email',
-        `We sent a confirmation link to ${trimmed}. Once you verify, you can sign in.`
-      );
-      router.replace('/login');
+      const msg = `We sent a confirmation link to ${trimmed}. Check your inbox, then sign in.`;
+      if (Platform.OS === 'web') {
+        setSuccess(msg);
+      } else {
+        Alert.alert('Confirm your email', msg);
+        router.replace('/login');
+      }
     } catch (e: any) {
-      Alert.alert('Sign up failed', e.message ?? 'Unknown error');
+      const msg = e.message ?? 'Unknown error';
+      if (Platform.OS === 'web') setError(msg);
+      else Alert.alert('Sign up failed', msg);
     }
   };
 
@@ -89,6 +105,9 @@ export default function SignupScreen() {
           value={email}
           onChangeText={setEmail}
           onBlur={() => setEmailTouched(true)}
+          onSubmitEditing={() => passwordRef.current?.focus()}
+          blurOnSubmit={false}
+          returnKeyType="next"
           style={[styles.input, emailTouched && !emailValid && styles.inputError]}
           placeholder="you@example.com"
         />
@@ -97,10 +116,14 @@ export default function SignupScreen() {
       <View style={styles.field}>
         <Text style={styles.label}>Password</Text>
         <TextInput
+          ref={passwordRef}
           secureTextEntry
           value={password}
           onChangeText={setPassword}
           onBlur={() => setPasswordTouched(true)}
+          onSubmitEditing={() => confirmRef.current?.focus()}
+          blurOnSubmit={false}
+          returnKeyType="next"
           style={[styles.input, passwordTouched && !passwordValid && styles.inputError]}
           placeholder="••••••••"
         />
@@ -109,10 +132,13 @@ export default function SignupScreen() {
       <View style={styles.field}>
         <Text style={styles.label}>Confirm password</Text>
         <TextInput
+          ref={confirmRef}
           secureTextEntry
           value={confirm}
           onChangeText={setConfirm}
           onBlur={() => setConfirmTouched(true)}
+          onSubmitEditing={doSignUp}
+          returnKeyType="go"
           style={[styles.input, confirmTouched && !confirmValid && styles.inputError]}
           placeholder="••••••••"
         />
@@ -135,9 +161,15 @@ export default function SignupScreen() {
         style={[styles.button, loading && styles.buttonDisabled]}
         disabled={loading}
         onPress={doSignUp}
+        accessibilityRole="button"
+        accessibilityLabel="Create account"
+        testID="signup-submit"
       >
         <Text style={styles.buttonText}>{loading ? 'Creating…' : 'Create account'}</Text>
       </Pressable>
+
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {success ? <Text style={styles.successText}>{success}</Text> : null}
 
       <View style={styles.footer}>
         <Text style={styles.footerText}>Already have an account?</Text>
@@ -225,5 +257,15 @@ const styles = StyleSheet.create({
   },
   requirementMet: {
     color: '#0F172A',
+  },
+  errorText: {
+    color: '#DC2626',
+    textAlign: 'center',
+    fontSize: 14,
+  },
+  successText: {
+    color: '#16A34A',
+    textAlign: 'center',
+    fontSize: 14,
   },
 });
