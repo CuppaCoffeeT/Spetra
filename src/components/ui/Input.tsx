@@ -23,18 +23,10 @@ export interface InputProps extends TextInputProps {
   style?: StyleProp<TextStyle>;
 }
 
-export function Input({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  error,
-  containerStyle,
-  style,
-  onFocus,
-  onBlur,
-  ...rest
-}: InputProps) {
+export const Input = React.forwardRef<TextInput, InputProps>(function Input(
+  { label, value, onChangeText, placeholder, error, containerStyle, style, onFocus, onBlur, ...rest },
+  ref
+) {
   const c = useColors();
   const [focused, setFocused] = useState(false);
 
@@ -58,6 +50,7 @@ export function Input({
         </Text>
       )}
       <TextInput
+        ref={ref}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
@@ -78,7 +71,7 @@ export function Input({
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   label: {
