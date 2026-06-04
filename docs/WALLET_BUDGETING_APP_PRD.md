@@ -13,7 +13,7 @@
 ---
 
 ## 📊 Progress / State  ← executor flips ⬜→🟡→✅; read first
-**Current phase: 4 complete ✅ → ready for Phase 5 (receipt scanner) · Blockers: none**
+**Current phase: 0–4 + 6 complete ✅ · Phase 5 (receipts) next · Blockers: apply `rules` migration (Phase 6) + install Phase-5 packages**
 
 | Phase | Title | Status | Notes |
 |---|---|---|---|
@@ -23,7 +23,7 @@
 | 3 | Budgeting | ✅ | `src/lib/budgets.ts` (CRUD + spend-math) + store slice; new **Budgets tab** (month selector, per-category caps, ProgressBar, over-budget alerts); Home "This Month's Budgets" summary. tsc 0, money-math verified |
 | 4 | Transaction detail / edit | ✅ | `edit.tsx` (all fields + **notes**), generalized dual-path `updateTransaction` (frozen hash, `edited` flag), `ignoreDuplicates` so re-sync preserves edits; rows from Transactions+Home open it. tsc 0, zero verifier issues |
 | 5 | Receipt scanner (on-device OCR) | ⬜ | ML Kit (native, needs dev build) + Tesseract.js (web) |
-| 6 | Smarter categorization ("NLP") | ⬜ | Keyword scoring + confidence + learns from corrections |
+| 6 | Smarter categorization ("NLP") | ✅ | `rules` table + `src/lib/rules.ts` (`categorizeWithRules`, `extractMerchantKey`) + scoring `scoreCategory()` w/ confidence; learning centralized in `updateTransaction`; applied on Gmail import; writes `category_confidence`. tsc 0. **⚠ apply `20260604100007_create_rules.sql`** |
 
 ---
 
@@ -198,6 +198,10 @@ detail / scan a receipt for more detail → user can also add entries manually.
 | 2026-06-04 | 3 | **Budgeting.** `src/lib/budgets.ts` (Supabase-direct CRUD + pure spend-math: `currentMonth`/`monthOf`/`spentByCategory`) + store `budgets` slice (loadBudgets/setBudget/clearBudget). New **Budgets tab** `app/(app)/budgets.tsx`: month selector, summary card, per-category caps with inline set/clear, `ProgressBar` + over-budget labels. Home gains additive "This Month's Budgets" summary. | `tsc` 0 ✅ · spend-math falsification-tested (income excluded, wrong-month excluded, `category_id→name` join — no uuid/name mix) ✅ · over/near/under colour tiers ✅ · Home behaviour additive ✅ |
 
 | 2026-06-04 | 4 | **Transaction detail/edit.** New `app/(app)/edit.tsx` (pre-filled; edits amount/direction/description/category/date + **notes**) + hidden route; Transactions + Home recent rows tap through to it (quick recategorize modal kept). Generalized `updateTransaction` to a dual path: `db.updateTransactionInDb` (native SQLite, `edited=1`, `synced_at=NULL`) / `updateTransactionInSupabase` (web) — **neither writes `dedupe_hash`** (R3 freeze). `saveTransactionsBatchToSupabase` → `ignoreDuplicates:true` so Gmail re-sync never duplicates *or* overwrites edits; `syncToSupabase` still pushes local edits. | `tsc` 0 ✅ · frozen-hash verified (comments only) ✅ · no-clobber-on-resync ✅ · dual-path persistence ✅ · behaviour additive ✅ · **zero verifier issues** |
+
+| 2026-06-04 | 6 | **Smarter NLP categorization.** New `rules` table (`supabase/migrations/20260604100007_create_rules.sql`, **apply to prod**) + `src/lib/rules.ts` (`categorizeWithRules` — learned rules outrank keywords; `extractMerchantKey`). `categorizer.ts` gains `scoreCategory()` (confidence); `categorize()` byte-identical. Learning centralized in `updateTransaction` (any manual recategorize upserts a `merchant→category` rule, priority 200, never blocks the edit). Applied on Gmail import (`syncEmails` overrides only on a rule match, keeping the parser's subject-aware category otherwise) + writes the dormant `category_confidence` column. | `tsc` 0 ✅ · learning loop + import application + rules-outrank-keywords verified ✅ · `parser.ts`/`categorize()` unchanged ✅ |
+
+**Phase 6 notes:** every correction (recategorize modal **or** edit screen) teaches the categorizer — no extra UI. Learned rules use a lowercase first-token merchant key. Needs the `rules` migration applied (Dashboard paste, like Phase 0).
 
 **Phase 4 notes:** "edit later to add detail" = the `notes` field on the edit screen. Hash frozen on edit; the `edited` flag marks user-touched rows. Delete-transaction intentionally deferred — deleting a Gmail-sourced row then re-syncing would re-import it (needs a tombstone/ignore-list; out of scope).
 

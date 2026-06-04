@@ -6,6 +6,7 @@ import * as db from '../lib/db';
 import * as sync from '../lib/sync';
 import * as categoriesLib from '../lib/categories';
 import * as budgetsLib from '../lib/budgets';
+import * as rulesLib from '../lib/rules';
 import type {
   Transaction,
   TransactionInput,
@@ -14,6 +15,7 @@ import type {
   Category,
   CategoryInput,
   Budget,
+  Rule,
 } from '../types';
 import { gmailService } from '../services/gmail';
 import { parseEmails, extractAccounts } from '../services/parser';
@@ -74,6 +76,11 @@ interface AppState {
   loadBudgets: () => Promise<void>;
   setBudget: (categoryId: string, month: string, limitAmount: number) => Promise<Budget | null>;
   clearBudget: (id: string) => Promise<boolean>;
+
+  // Rules (learned merchant -> category)
+  rules: Rule[];
+  rulesLoading: boolean;
+  loadRules: () => Promise<void>;
 
   // Sync
   syncLoading: boolean;
@@ -200,6 +207,37 @@ export const useStore = create<AppState>()((set, get) => ({
           t.id === id ? { ...t, ...updates, edited: true } : t
         ),
       }));
+
+      // LEARN ON CORRECTION: when the user manually sets a category, persist a
+      // merchant-keyword -> category rule so future imports auto-sort. Learning
+      // must never block or throw the edit, so wrap it defensively.
+      if (updates.category) {
+        try {
+          const userId = get().session?.user?.id;
+          const txn = get().transactions.find((t) => t.id === id);
+          const description = txn?.description;
+          if (userId && description) {
+            const key = rulesLib.extractMerchantKey(description);
+            if (key) {
+              const rule = await rulesLib.upsertRuleFromSupabase(userId, {
+                pattern: key,
+                category: updates.category,
+                priority: 200,
+              });
+              if (rule) {
+                set((state) => ({
+                  rules: [
+                    rule,
+                    ...state.rules.filter((r) => r.pattern !== rule.pattern),
+                  ],
+                }));
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Learn rule from correction failed:', error);
+        }
+      }
     }
     return success;
   },
@@ -251,6 +289,24 @@ export const useStore = create<AppState>()((set, get) => ({
     try {
       const messages = await gmailService.fetchRecentMessages();
       const inputs = parseEmails(messages);
+
+      // APPLY ON IMPORT: re-categorize parsed inputs with learned rules (which
+      // outrank the built-in keyword scorer) and record category_confidence.
+      if (get().rules.length === 0) {
+        await get().loadRules();
+      }
+      for (const input of inputs) {
+        const { category, confidence } = rulesLib.categorizeWithRules(
+          input.description,
+          get().rules
+        );
+        // A learned rule (confidence 0.99) overrides; otherwise keep the
+        // parser's category, which was derived from description + subject.
+        if (confidence >= 0.99) {
+          input.category = category;
+        }
+        input.categoryConfidence = confidence;
+      }
 
       // Batch save to Supabase (upsert handles dedup)
       const added = await sync.saveTransactionsBatchToSupabase(userId, inputs);
@@ -443,6 +499,24 @@ export const useStore = create<AppState>()((set, get) => ({
       }));
     }
     return success;
+  },
+
+  // Rules state (learned merchant -> category)
+  rules: [],
+  rulesLoading: false,
+
+  loadRules: async () => {
+    const userId = get().session?.user?.id;
+    if (!userId) return;
+
+    set({ rulesLoading: true });
+    try {
+      const rules = await rulesLib.getRulesFromSupabase(userId);
+      set({ rules, rulesLoading: false });
+    } catch (error) {
+      console.error('Load rules failed:', error);
+      set({ rulesLoading: false });
+    }
   },
 
   // Sync state

@@ -110,6 +110,7 @@ export async function saveTransactionToSupabase(
       source: input.source,
       source_email: input.sourceEmail || null,
       dedupe_hash: hashStr,
+      category_confidence: input.categoryConfidence ?? null,
       synced_at: new Date().toISOString(),
     }, { onConflict: 'dedupe_hash' })
     .select()
@@ -166,6 +167,7 @@ export async function saveTransactionsBatchToSupabase(
       source: input.source,
       source_email: input.sourceEmail || null,
       dedupe_hash: Math.abs(hash).toString(36),
+      category_confidence: input.categoryConfidence ?? null,
       synced_at: new Date().toISOString(),
     };
   });

@@ -30,6 +30,23 @@ export interface TransactionInput {
   transactionDate: string;
   source: TransactionSource;
   sourceEmail?: string;
+  categoryConfidence?: number;
+}
+
+export interface Rule {
+  id: string;
+  userId: string;
+  pattern: string;
+  category: string;
+  priority: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RuleInput {
+  pattern: string;
+  category: string;
+  priority?: number;
 }
 
 export interface GmailMessage {

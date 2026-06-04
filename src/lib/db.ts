@@ -118,8 +118,8 @@ export async function insertTransaction(
   const now = new Date().toISOString();
 
   await database.runAsync(
-    `INSERT INTO transactions (id, user_id, amount, currency, direction, description, category, transaction_date, source, source_email, dedupe_hash, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO transactions (id, user_id, amount, currency, direction, description, category, transaction_date, source, source_email, dedupe_hash, created_at, category_confidence)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       userId,
@@ -133,6 +133,7 @@ export async function insertTransaction(
       input.sourceEmail || null,
       dedupeHash,
       now,
+      input.categoryConfidence ?? null,
     ]
   );
 
