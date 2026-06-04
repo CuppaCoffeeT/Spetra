@@ -39,3 +39,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# standalone Vite web viewer
+web/node_modules
+web/dist
+web/.vite
