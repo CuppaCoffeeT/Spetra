@@ -1,4 +1,4 @@
-import type { GmailMessage, TransactionInput } from '../types';
+import type { GmailMessage, TransactionInput, BankAccountInput } from '../types';
 import { categorize } from './categorizer';
 
 // Amount patterns for SGD
@@ -21,7 +21,32 @@ const MONTH_MAP: Record<string, number> = {
 
 // Direction keywords
 const IN_KEYWORDS = ['received', 'credited', 'salary', 'refund', 'cashback'];
-const OUT_KEYWORDS = ['paid', 'charged', 'debited', 'spent', 'transaction', 'was made', 'purchase'];
+const OUT_KEYWORDS = ['paid', 'charged', 'debited', 'spent', 'transaction', 'was made', 'purchase', 'payment of', 'transfer of'];
+
+// Subjects to skip entirely (not actual transactions)
+const SKIP_SUBJECTS = [
+  /eStatement/i,
+  /eAdvice/i,
+  /Card Wallet Provision/i,
+  /is successful/i,  // "Your PayNow transfer ... is successful" (duplicate of actual transfer alert)
+];
+
+// UOB disclaimer / boilerplate to strip before description extraction
+const STRIP_PATTERNS = [
+  /UOB EMAIL DISCLAIMER[\s\S]*/i,
+  /If you did not [\s\S]*/i,
+  /This is an auto-generated[\s\S]*/i,
+  /amounts to a breach of confidentiality[\s\S]*/i,
+  /Please do not reply[\s\S]*/i,
+];
+
+function cleanText(text: string): string {
+  let cleaned = text;
+  for (const pattern of STRIP_PATTERNS) {
+    cleaned = cleaned.replace(pattern, '');
+  }
+  return cleaned;
+}
 
 function extractAmount(text: string): number | null {
   for (const pattern of AMOUNT_PATTERNS) {
@@ -78,23 +103,55 @@ function parseDate(text: string, fallbackDate: string): string {
 }
 
 function extractDescription(text: string, subject: string): string {
-  // Try to extract merchant from "at MERCHANT" pattern
-  const atMatch = text.match(/at\s+([A-Z0-9\s\*\-\.]+?)(?:\.|If|$)/i);
+  const cleaned = cleanText(text);
+
+  // NETS QR: "payment of SGD X.XX to MERCHANT on your"
+  const netsMatch = cleaned.match(/payment of SGD\s?[\d,.]+\s+to\s+(.+?)\s+on your/i);
+  if (netsMatch) {
+    return netsMatch[1].trim();
+  }
+
+  // PayNow transfer: "transfer of SGD X.XX to RECIPIENT (Mobile/UEN ending XXX)"
+  const paynowTransferMatch = cleaned.match(/transfer of SGD\s?[\d,.]+\s+to\s+(.+?)\s*\(/i);
+  if (paynowTransferMatch) {
+    return paynowTransferMatch[1].trim();
+  }
+
+  // PayNow received: "received SGD X.XX in your PayNow-linked account"
+  const paynowReceivedMatch = cleaned.match(/received SGD/i);
+  if (paynowReceivedMatch) {
+    return 'PayNow Received';
+  }
+
+  // Card transaction: "at MERCHANT on DD/MM/YY" or "at MERCHANT."
+  const atMatch = cleaned.match(/\bat\s+([A-Za-z0-9][A-Za-z0-9\s\*\-\.&']+?)(?:\s+on\s+\d|\.\s|$)/i);
   if (atMatch) {
     return atMatch[1].trim();
   }
 
-  // Try PayNow pattern
-  const paynowMatch = text.match(/(?:to|from)\s+([A-Z\s]+?)(?:\s+\(|\s+on|\.|$)/i);
-  if (paynowMatch) {
-    return paynowMatch[1].trim();
+  // Fund transfer: "funds transfer(s) of SGD X"
+  const fundTransferMatch = cleaned.match(/funds transfer/i);
+  if (fundTransferMatch) {
+    return 'Fund Transfer';
   }
 
-  // Fallback to subject
-  return subject.replace(/\[.*?\]/g, '').trim() || 'Unknown';
+  // Fallback to cleaned subject
+  return subject
+    .replace(/UOB\s*-\s*/i, '')
+    .replace(/\[.*?\]/g, '')
+    .trim() || 'Unknown';
+}
+
+function shouldSkip(message: GmailMessage): boolean {
+  for (const pattern of SKIP_SUBJECTS) {
+    if (pattern.test(message.subject)) return true;
+  }
+  return false;
 }
 
 export function parseEmail(message: GmailMessage): TransactionInput | null {
+  if (shouldSkip(message)) return null;
+
   const fullText = `${message.subject} ${message.body} ${message.snippet}`;
 
   const amount = extractAmount(fullText);
@@ -103,7 +160,7 @@ export function parseEmail(message: GmailMessage): TransactionInput | null {
   const direction = detectDirection(fullText);
   const transactionDate = parseDate(fullText, message.receivedAt);
   const description = extractDescription(fullText, message.subject);
-  const category = categorize(description);
+  const category = categorize(description + ' ' + message.subject);
 
   return {
     amount,
@@ -121,4 +178,60 @@ export function parseEmails(messages: GmailMessage[]): TransactionInput[] {
   return messages
     .map(parseEmail)
     .filter((input): input is TransactionInput => input !== null);
+}
+
+// Extract bank accounts/cards from email content
+const ACCOUNT_PATTERNS = [
+  { pattern: /card ending (\d{4})/gi, type: 'card' as const, bank: 'UOB' },
+  { pattern: /a\/c ending (\d{4})/gi, type: 'account' as const, bank: 'UOB' },
+];
+
+export function extractAccounts(messages: GmailMessage[]): BankAccountInput[] {
+  const seen = new Set<string>();
+  const accounts: BankAccountInput[] = [];
+
+  for (const msg of messages) {
+    const fullText = `${msg.subject} ${msg.body} ${msg.snippet}`;
+    const fromLower = msg.from.toLowerCase();
+
+    // Detect bank from sender
+    let defaultBank = 'Unknown';
+    if (fromLower.includes('uob')) defaultBank = 'UOB';
+    else if (fromLower.includes('revolut')) defaultBank = 'Revolut';
+
+    for (const { pattern, type, bank } of ACCOUNT_PATTERNS) {
+      // Reset regex lastIndex for each message
+      pattern.lastIndex = 0;
+      let match;
+      while ((match = pattern.exec(fullText)) !== null) {
+        const digits = match[1];
+        const key = `${bank}-${type}-${digits}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          accounts.push({
+            bankName: bank,
+            accountType: type,
+            lastFourDigits: digits,
+            sourceEmail: msg.from,
+          });
+        }
+      }
+    }
+
+    // Revolut emails - detect as account if from Revolut
+    if (defaultBank === 'Revolut') {
+      const key = `Revolut-account-revolut`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        accounts.push({
+          bankName: 'Revolut',
+          accountType: 'account',
+          lastFourDigits: '****',
+          sourceEmail: msg.from,
+        });
+      }
+    }
+  }
+
+  return accounts;
 }

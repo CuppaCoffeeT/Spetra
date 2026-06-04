@@ -4,9 +4,9 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import * as db from '../lib/db';
 import * as sync from '../lib/sync';
-import type { Transaction, TransactionInput, GmailAuthState } from '../types';
+import type { Transaction, TransactionInput, GmailAuthState, BankAccount } from '../types';
 import { gmailService } from '../services/gmail';
-import { parseEmails } from '../services/parser';
+import { parseEmails, extractAccounts } from '../services/parser';
 import Constants from 'expo-constants';
 
 interface AppState {
@@ -23,14 +23,22 @@ interface AppState {
   transactionsLoading: boolean;
   loadTransactions: () => Promise<void>;
   addTransaction: (input: TransactionInput) => Promise<Transaction | null>;
+  updateTransaction: (id: string, updates: { category?: string }) => Promise<boolean>;
 
   // Gmail
   gmailState: GmailAuthState;
   gmailLoading: boolean;
   initGmail: () => void;
   connectGmail: () => Promise<void>;
-  disconnectGmail: () => Promise<void>;
+  disconnectGmail: (email: string) => Promise<void>;
   syncEmails: () => Promise<number>;
+
+  // Bank accounts
+  bankAccounts: BankAccount[];
+  bankAccountsLoading: boolean;
+  loadBankAccounts: () => Promise<void>;
+  detectBankAccounts: () => Promise<number>;
+  updateBankAccountLabel: (id: string, label: string) => Promise<void>;
 
   // Sync
   syncLoading: boolean;
@@ -145,15 +153,27 @@ export const useStore = create<AppState>()((set, get) => ({
     }
   },
 
+  updateTransaction: async (id, updates) => {
+    const success = await sync.updateTransactionInSupabase(id, updates);
+    if (success) {
+      set((state) => ({
+        transactions: state.transactions.map((t) =>
+          t.id === id ? { ...t, ...updates } : t
+        ),
+      }));
+    }
+    return success;
+  },
+
   // Gmail state
-  gmailState: { isConnected: false },
+  gmailState: { accounts: [] },
   gmailLoading: false,
 
   initGmail: async () => {
     const extra = Constants.expoConfig?.extra as { googleClientId?: string } | undefined;
     const clientId = extra?.googleClientId;
     if (clientId) {
-      gmailService.initialize(clientId);
+      await gmailService.initialize(clientId);
 
       // Check for OAuth callback (returning from Google)
       const wasCallback = await gmailService.checkOAuthCallback();
@@ -178,9 +198,9 @@ export const useStore = create<AppState>()((set, get) => ({
     }
   },
 
-  disconnectGmail: async () => {
+  disconnectGmail: async (email: string) => {
     set({ gmailLoading: true });
-    const state = await gmailService.disconnect();
+    const state = await gmailService.disconnect(email);
     set({ gmailState: state, gmailLoading: false });
   },
 
@@ -193,18 +213,80 @@ export const useStore = create<AppState>()((set, get) => ({
       const messages = await gmailService.fetchRecentMessages();
       const inputs = parseEmails(messages);
 
-      let added = 0;
-      for (const input of inputs) {
-        const result = await get().addTransaction(input);
-        if (result) added++;
+      // Batch save to Supabase (upsert handles dedup)
+      const added = await sync.saveTransactionsBatchToSupabase(userId, inputs);
+
+      // Detect bank accounts from emails
+      const accountInputs = extractAccounts(messages);
+      for (const acct of accountInputs) {
+        await sync.saveBankAccountToSupabase(userId, acct);
       }
+
+      // Reload clean data from DB (no duplicates)
+      await get().loadTransactions();
+      await get().loadBankAccounts();
 
       set({ gmailState: gmailService.getState(), gmailLoading: false });
       return added;
     } catch (error) {
-      console.error('Email sync failed:', error);
-      set({ gmailLoading: false });
+      console.error('[syncEmails] Failed:', error);
+      // Update gmail state in case accounts were removed due to token expiry
+      set({ gmailState: gmailService.getState(), gmailLoading: false });
       throw error;
+    }
+  },
+
+  // Bank accounts
+  bankAccounts: [],
+  bankAccountsLoading: false,
+
+  loadBankAccounts: async () => {
+    const userId = get().session?.user?.id;
+    if (!userId) return;
+
+    set({ bankAccountsLoading: true });
+    try {
+      const bankAccounts = await sync.getBankAccountsFromSupabase(userId);
+      set({ bankAccounts, bankAccountsLoading: false });
+    } catch (error) {
+      console.error('Load bank accounts failed:', error);
+      set({ bankAccountsLoading: false });
+    }
+  },
+
+  detectBankAccounts: async () => {
+    const userId = get().session?.user?.id;
+    if (!userId) return 0;
+
+    set({ bankAccountsLoading: true });
+    try {
+      const messages = await gmailService.fetchRecentMessages();
+      const accountInputs = extractAccounts(messages);
+
+      let added = 0;
+      for (const acct of accountInputs) {
+        const result = await sync.saveBankAccountToSupabase(userId, acct);
+        if (result) added++;
+      }
+
+      await get().loadBankAccounts();
+      set({ bankAccountsLoading: false });
+      return added;
+    } catch (error) {
+      console.error('Detect bank accounts failed:', error);
+      set({ bankAccountsLoading: false });
+      return 0;
+    }
+  },
+
+  updateBankAccountLabel: async (id, label) => {
+    const success = await sync.updateBankAccountLabelInSupabase(id, label);
+    if (success) {
+      set((state) => ({
+        bankAccounts: state.bankAccounts.map((a) =>
+          a.id === id ? { ...a, label } : a
+        ),
+      }));
     }
   },
 

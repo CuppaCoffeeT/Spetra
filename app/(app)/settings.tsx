@@ -1,5 +1,27 @@
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Platform } from 'react-native';
 import { useStore } from '../../src/store/useStore';
+import type { GmailAccount } from '../../src/types';
+
+function confirm(title: string, message: string, onConfirm: () => void) {
+  if (Platform.OS === 'web') {
+    if (window.confirm(`${title}\n\n${message}`)) {
+      onConfirm();
+    }
+  } else {
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Confirm', style: 'destructive', onPress: onConfirm },
+    ]);
+  }
+}
+
+function notify(title: string, message: string) {
+  if (Platform.OS === 'web') {
+    window.alert(`${title}\n\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+}
 
 export default function SettingsScreen() {
   const {
@@ -15,46 +37,35 @@ export default function SettingsScreen() {
     syncLoading,
   } = useStore();
 
+  const hasAccounts = gmailState.accounts.length > 0;
+
   const handleConnectGmail = async () => {
     try {
       await connectGmail();
-      Alert.alert('Success', 'Gmail connected successfully!');
     } catch (error) {
-      Alert.alert('Error', (error as Error).message);
+      notify('Error', (error as Error).message);
     }
   };
 
-  const handleDisconnectGmail = async () => {
-    Alert.alert('Disconnect Gmail', 'Are you sure you want to disconnect Gmail?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Disconnect',
-        style: 'destructive',
-        onPress: async () => {
-          await disconnectGmail();
-        },
-      },
-    ]);
+  const handleDisconnectGmail = (account: GmailAccount) => {
+    confirm('Remove Account', `Disconnect ${account.email}?`, async () => {
+      await disconnectGmail(account.email);
+    });
   };
 
   const handleSyncEmails = async () => {
     try {
       const count = await syncEmails();
-      Alert.alert('Sync Complete', `Added ${count} new transactions`);
+      notify('Sync Complete', `Added ${count} new transactions`);
     } catch (error) {
-      Alert.alert('Error', (error as Error).message);
+      notify('Error', (error as Error).message);
     }
   };
 
   const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: signOut,
-      },
-    ]);
+    confirm('Sign Out', 'Are you sure you want to sign out?', () => {
+      signOut();
+    });
   };
 
   return (
@@ -68,59 +79,62 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Gmail Integration</Text>
+        <Text style={styles.sectionTitle}>Gmail Accounts</Text>
         <View style={styles.card}>
-          <View style={styles.row}>
-            <View>
-              <Text style={styles.label}>Status</Text>
-              <Text style={[styles.status, gmailState.isConnected && styles.connected]}>
-                {gmailState.isConnected ? 'Connected' : 'Not connected'}
-              </Text>
-              {gmailState.email && (
-                <Text style={styles.gmailEmail}>{gmailState.email}</Text>
-              )}
-            </View>
-          </View>
+          {hasAccounts ? (
+            <>
+              {gmailState.accounts.map((account) => (
+                <View key={account.email} style={styles.accountRow}>
+                  <View style={styles.accountInfo}>
+                    <Text style={styles.accountEmail}>{account.email}</Text>
+                    <Text style={[styles.status, styles.connected]}>Connected</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.removeButton}
+                    onPress={() => handleDisconnectGmail(account)}
+                    disabled={gmailLoading}
+                  >
+                    <Text style={styles.removeButtonText}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
 
-          {gmailState.isConnected ? (
-            <View style={styles.buttonGroup}>
+              <View style={styles.buttonGroup}>
+                <TouchableOpacity
+                  style={[styles.button, styles.primaryButton]}
+                  onPress={handleSyncEmails}
+                  disabled={gmailLoading}
+                >
+                  {gmailLoading ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.buttonText}>Sync All Emails</Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.button, styles.outlineButton]}
+                  onPress={handleConnectGmail}
+                  disabled={gmailLoading}
+                >
+                  <Text style={styles.outlineButtonText}>Add Gmail Account</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.status, { marginBottom: 16 }]}>No accounts connected</Text>
               <TouchableOpacity
                 style={[styles.button, styles.primaryButton]}
-                onPress={handleSyncEmails}
+                onPress={handleConnectGmail}
                 disabled={gmailLoading}
               >
                 {gmailLoading ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Text style={styles.buttonText}>Sync Emails</Text>
+                  <Text style={styles.buttonText}>Connect Gmail</Text>
                 )}
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.button, styles.outlineButton]}
-                onPress={handleDisconnectGmail}
-                disabled={gmailLoading}
-              >
-                <Text style={styles.outlineButtonText}>Disconnect</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={[styles.button, styles.primaryButton]}
-              onPress={handleConnectGmail}
-              disabled={gmailLoading}
-            >
-              {gmailLoading ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.buttonText}>Connect Gmail</Text>
-              )}
-            </TouchableOpacity>
-          )}
-
-          {gmailState.lastSync && (
-            <Text style={styles.lastSync}>
-              Last synced: {new Date(gmailState.lastSync).toLocaleString()}
-            </Text>
+            </>
           )}
         </View>
       </View>
@@ -184,12 +198,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 1,
   },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
   label: {
     fontSize: 14,
     color: '#64748b',
@@ -200,20 +208,44 @@ const styles = StyleSheet.create({
     color: '#1e293b',
   },
   status: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#ef4444',
     fontWeight: '500',
   },
   connected: {
     color: '#22c55e',
   },
-  gmailEmail: {
+  accountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  accountInfo: {
+    flex: 1,
+  },
+  accountEmail: {
+    fontSize: 16,
+    color: '#1e293b',
+    fontWeight: '500',
+  },
+  removeButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#ef4444',
+  },
+  removeButtonText: {
+    color: '#ef4444',
     fontSize: 14,
-    color: '#64748b',
-    marginTop: 4,
+    fontWeight: '500',
   },
   buttonGroup: {
     gap: 12,
+    marginTop: 16,
   },
   button: {
     borderRadius: 8,
@@ -240,11 +272,5 @@ const styles = StyleSheet.create({
     color: '#3b82f6',
     fontSize: 16,
     fontWeight: '600',
-  },
-  lastSync: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginTop: 12,
-    textAlign: 'center',
   },
 });

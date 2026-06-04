@@ -1,9 +1,11 @@
 import { useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useStore } from '../../src/store/useStore';
 
 export default function HomeScreen() {
   const { transactions, transactionsLoading, loadTransactions, session } = useStore();
+  const router = useRouter();
 
   useEffect(() => {
     if (session) {
@@ -42,6 +44,7 @@ export default function HomeScreen() {
     .slice(0, 5);
 
   return (
+    <View style={styles.wrapper}>
     <ScrollView
       style={styles.container}
       refreshControl={
@@ -122,10 +125,21 @@ export default function HomeScreen() {
         )}
       </View>
     </ScrollView>
+    <TouchableOpacity
+      style={styles.fab}
+      onPress={() => router.push('/(app)/add')}
+      activeOpacity={0.8}
+    >
+      <Text style={styles.fabText}>+</Text>
+    </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrapper: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
@@ -244,5 +258,27 @@ const styles = StyleSheet.create({
   transactionAmount: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#3b82f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  fabText: {
+    fontSize: 28,
+    color: '#fff',
+    fontWeight: '300',
+    marginTop: -2,
   },
 });

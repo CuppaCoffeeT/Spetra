@@ -8,7 +8,7 @@ if (Platform.OS !== 'web') {
   WebBrowser.maybeCompleteAuthSession();
 }
 
-const TOKEN_KEY = 'gmail_tokens';
+const ACCOUNTS_KEY = 'gmail_accounts';
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/userinfo.email',
@@ -51,52 +51,66 @@ interface StoredTokens {
   accessToken: string;
   refreshToken?: string;
   expiresAt: number;
-  email?: string;
+  email: string;
 }
+
+// Stored as Record<email, StoredTokens>
+type StoredAccounts = Record<string, StoredTokens>;
 
 class GmailService {
   private clientId: string | null = null;
-  private state: GmailAuthState = { isConnected: false };
-  private tokens: StoredTokens | null = null;
+  private accounts: StoredAccounts = {};
+  private fetchInProgress: Promise<GmailMessage[]> | null = null;
 
-  initialize(clientId: string) {
+  async initialize(clientId: string) {
     this.clientId = clientId;
-    void this.loadStoredTokens();
+    await this.loadStoredAccounts();
   }
 
-  private async loadStoredTokens() {
+  private async loadStoredAccounts() {
     try {
-      const stored = await storage.getItem(TOKEN_KEY);
-      if (stored) {
-        this.tokens = JSON.parse(stored);
-        if (this.tokens && this.tokens.expiresAt > Date.now() + 5 * 60 * 1000) {
-          this.state = { isConnected: true, email: this.tokens.email };
-        } else if (this.tokens?.refreshToken) {
-          await this.refreshAccessToken();
+      // Migrate from old single-token format
+      const oldTokens = await storage.getItem('gmail_tokens');
+      if (oldTokens) {
+        const parsed = JSON.parse(oldTokens) as StoredTokens;
+        if (parsed.email) {
+          this.accounts[parsed.email] = parsed;
+          await this.saveAccounts();
         }
+        await storage.deleteItem('gmail_tokens');
+      }
+
+      const stored = await storage.getItem(ACCOUNTS_KEY);
+      if (stored) {
+        this.accounts = JSON.parse(stored);
+        // Remove fully expired accounts without refresh tokens
+        let changed = false;
+        for (const email of Object.keys(this.accounts)) {
+          const tokens = this.accounts[email];
+          if (tokens.expiresAt <= Date.now() && !tokens.refreshToken) {
+            delete this.accounts[email];
+            changed = true;
+          }
+        }
+        if (changed) await this.saveAccounts();
       }
     } catch (error) {
-      console.error('Failed to load tokens:', error);
+      console.error('Failed to load accounts:', error);
     }
   }
 
-  private async saveTokens(tokens: StoredTokens) {
-    this.tokens = tokens;
-    await storage.setItem(TOKEN_KEY, JSON.stringify(tokens));
-  }
-
-  private async clearTokens() {
-    this.tokens = null;
-    await storage.deleteItem(TOKEN_KEY);
+  private async saveAccounts() {
+    await storage.setItem(ACCOUNTS_KEY, JSON.stringify(this.accounts));
   }
 
   getState(): GmailAuthState {
-    return this.state;
+    return {
+      accounts: Object.keys(this.accounts).map((email) => ({ email })),
+    };
   }
 
   getRedirectUri(): string {
     if (Platform.OS === 'web') {
-      // Use root URL for OAuth callback - we handle it in _layout.tsx
       return typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8081';
     }
     return AuthSession.makeRedirectUri({ scheme: 'spendtracker' });
@@ -110,7 +124,6 @@ class GmailService {
     const redirectUri = this.getRedirectUri();
 
     if (Platform.OS === 'web') {
-      // For web, use implicit flow with access token directly
       return this.connectWeb(redirectUri);
     }
 
@@ -138,23 +151,46 @@ class GmailService {
 
       const userInfo = await this.fetchUserInfo(tokenResponse.accessToken);
 
-      const tokens: StoredTokens = {
+      this.accounts[userInfo.email] = {
         accessToken: tokenResponse.accessToken,
         refreshToken: tokenResponse.refreshToken,
         expiresAt: Date.now() + (tokenResponse.expiresIn ?? 3600) * 1000,
         email: userInfo.email,
       };
 
-      await this.saveTokens(tokens);
-      this.state = { isConnected: true, email: userInfo.email };
+      await this.saveAccounts();
     }
 
-    return this.state;
+    return this.getState();
   }
 
   private connectWeb(redirectUri: string): Promise<GmailAuthState> {
     return new Promise((resolve) => {
-      // Build OAuth URL for implicit flow
+      // Check if we already have a token in the URL hash (returning from OAuth)
+      if (typeof window !== 'undefined' && window.location.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const accessToken = hashParams.get('access_token');
+        const expiresIn = hashParams.get('expires_in');
+
+        if (accessToken) {
+          window.history.replaceState(null, '', window.location.pathname);
+
+          this.fetchUserInfo(accessToken).then((userInfo) => {
+            this.accounts[userInfo.email] = {
+              accessToken,
+              expiresAt: Date.now() + (parseInt(expiresIn || '3600', 10) * 1000),
+              email: userInfo.email,
+            };
+            this.saveAccounts();
+            resolve(this.getState());
+          }).catch(() => {
+            resolve(this.getState());
+          });
+          return;
+        }
+      }
+
+      // Build OAuth URL and redirect
       const params = new URLSearchParams({
         client_id: this.clientId!,
         redirect_uri: redirectUri,
@@ -164,42 +200,11 @@ class GmailService {
         prompt: 'consent',
       });
 
-      const authUrl = `${discovery.authorizationEndpoint}?${params.toString()}`;
-
-      // Check if we already have a token in the URL hash (returning from OAuth)
-      if (typeof window !== 'undefined' && window.location.hash) {
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        const accessToken = hashParams.get('access_token');
-        const expiresIn = hashParams.get('expires_in');
-
-        if (accessToken) {
-          // Clear the hash from URL
-          window.history.replaceState(null, '', window.location.pathname);
-
-          // Save token and fetch user info
-          this.fetchUserInfo(accessToken).then((userInfo) => {
-            const tokens: StoredTokens = {
-              accessToken,
-              expiresAt: Date.now() + (parseInt(expiresIn || '3600', 10) * 1000),
-              email: userInfo.email,
-            };
-            this.saveTokens(tokens);
-            this.state = { isConnected: true, email: userInfo.email };
-            resolve(this.state);
-          }).catch(() => {
-            resolve(this.state);
-          });
-          return;
-        }
-      }
-
-      // Redirect to Google OAuth
-      window.location.href = authUrl;
-      resolve(this.state);
+      window.location.href = `${discovery.authorizationEndpoint}?${params.toString()}`;
+      resolve(this.getState());
     });
   }
 
-  // Call this on page load to check for OAuth callback
   async checkOAuthCallback(): Promise<boolean> {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
 
@@ -211,18 +216,16 @@ class GmailService {
     const expiresIn = hashParams.get('expires_in');
 
     if (accessToken) {
-      // Clear the hash from URL
       window.history.replaceState(null, '', window.location.pathname);
 
       try {
         const userInfo = await this.fetchUserInfo(accessToken);
-        const tokens: StoredTokens = {
+        this.accounts[userInfo.email] = {
           accessToken,
           expiresAt: Date.now() + (parseInt(expiresIn || '3600', 10) * 1000),
           email: userInfo.email,
         };
-        await this.saveTokens(tokens);
-        this.state = { isConnected: true, email: userInfo.email };
+        await this.saveAccounts();
         return true;
       } catch (error) {
         console.error('OAuth callback failed:', error);
@@ -240,55 +243,79 @@ class GmailService {
     return response.json();
   }
 
-  private async refreshAccessToken() {
-    if (!this.clientId || !this.tokens?.refreshToken) return;
+  private async refreshAccessToken(email: string) {
+    const tokens = this.accounts[email];
+    if (!this.clientId || !tokens?.refreshToken) return;
 
     try {
       const response = await AuthSession.refreshAsync(
-        { clientId: this.clientId, refreshToken: this.tokens.refreshToken },
+        { clientId: this.clientId, refreshToken: tokens.refreshToken },
         discovery
       );
 
-      const tokens: StoredTokens = {
+      this.accounts[email] = {
         accessToken: response.accessToken,
-        refreshToken: response.refreshToken ?? this.tokens.refreshToken,
+        refreshToken: response.refreshToken ?? tokens.refreshToken,
         expiresAt: Date.now() + (response.expiresIn ?? 3600) * 1000,
-        email: this.tokens.email,
+        email,
       };
 
-      await this.saveTokens(tokens);
-      this.state = { isConnected: true, email: tokens.email };
+      await this.saveAccounts();
     } catch {
-      await this.disconnect();
+      await this.disconnect(email);
     }
   }
 
-  private async getValidAccessToken(): Promise<string> {
-    if (!this.tokens) throw new Error('Not connected to Gmail');
+  private async getValidAccessToken(email: string): Promise<string> {
+    const tokens = this.accounts[email];
+    if (!tokens) throw new Error(`Not connected to Gmail account: ${email}`);
 
-    if (this.tokens.expiresAt < Date.now() + 5 * 60 * 1000) {
-      await this.refreshAccessToken();
+    if (tokens.expiresAt < Date.now() + 5 * 60 * 1000) {
+      if (tokens.refreshToken) {
+        await this.refreshAccessToken(email);
+      } else {
+        // Implicit flow token expired — remove stale account
+        delete this.accounts[email];
+        await this.saveAccounts();
+        throw new Error(`Gmail session expired for ${email}. Please reconnect in Settings.`);
+      }
     }
 
-    if (!this.tokens?.accessToken) throw new Error('No valid access token');
-    return this.tokens.accessToken;
+    const refreshed = this.accounts[email];
+    if (!refreshed?.accessToken) throw new Error(`No valid access token for: ${email}`);
+    return refreshed.accessToken;
   }
 
-  async disconnect(): Promise<GmailAuthState> {
-    if (this.tokens?.accessToken) {
+  async disconnect(email: string): Promise<GmailAuthState> {
+    const tokens = this.accounts[email];
+    if (tokens?.accessToken) {
       try {
-        await AuthSession.revokeAsync({ token: this.tokens.accessToken }, discovery);
+        await AuthSession.revokeAsync({ token: tokens.accessToken }, discovery);
       } catch (error) {
         console.error('Revocation failed:', error);
       }
     }
-    await this.clearTokens();
-    this.state = { isConnected: false };
-    return this.state;
+    delete this.accounts[email];
+    await this.saveAccounts();
+    return this.getState();
   }
 
   async fetchRecentMessages(maxResults = 50, daysBack = 30): Promise<GmailMessage[]> {
-    const accessToken = await this.getValidAccessToken();
+    // Deduplicate concurrent calls to prevent ERR_INSUFFICIENT_RESOURCES
+    if (this.fetchInProgress) {
+      return this.fetchInProgress;
+    }
+    this.fetchInProgress = this._fetchRecentMessages(maxResults, daysBack);
+    try {
+      return await this.fetchInProgress;
+    } finally {
+      this.fetchInProgress = null;
+    }
+  }
+
+  private async _fetchRecentMessages(maxResults: number, daysBack: number): Promise<GmailMessage[]> {
+    const emails = Object.keys(this.accounts);
+    if (emails.length === 0) return [];
 
     const senders = ['unialerts@uobgroup.com', 'noreply@revolut.com'];
     const afterDate = new Date();
@@ -298,38 +325,72 @@ class GmailService {
     const query = `from:(${senders.join(' OR ')}) after:${afterDateStr}`;
     const encodedQuery = encodeURIComponent(query);
 
-    const listResponse = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodedQuery}&maxResults=${maxResults}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
+    console.log('[Gmail] Query:', query);
+    console.log('[Gmail] Fetching from accounts:', emails.join(', '));
 
-    if (!listResponse.ok) {
-      throw new Error(`Failed to list messages: ${await listResponse.text()}`);
+    const allMessages: GmailMessage[] = [];
+
+    for (const email of emails) {
+      try {
+        const accessToken = await this.getValidAccessToken(email);
+        console.log(`[Gmail] Fetching from ${email}...`);
+
+        const listResponse = await this.fetchWithTimeout(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodedQuery}&maxResults=${maxResults}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+          20000
+        );
+
+        if (!listResponse.ok) {
+          console.error(`[Gmail] Failed for ${email}:`, await listResponse.text());
+          continue;
+        }
+
+        const listData = await listResponse.json();
+        console.log(`[Gmail] ${email}: found ${listData.messages?.length ?? 0} messages`);
+        const messageIds: { id: string; threadId: string }[] = listData.messages ?? [];
+
+        if (messageIds.length === 0) {
+          console.log(`[Gmail] ${email}: No messages found. Testing API...`);
+          const testResponse = await this.fetchWithTimeout(
+            `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=3`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+          const testData = await testResponse.json();
+          console.log(`[Gmail] ${email}: Broad test - found ${testData.messages?.length ?? 0} messages`);
+          continue;
+        }
+
+        // Fetch details in batches to avoid ERR_INSUFFICIENT_RESOURCES
+        const batchSize = 5;
+        for (let i = 0; i < messageIds.length; i += batchSize) {
+          const batch = messageIds.slice(i, i + batchSize);
+          const batchResults = await Promise.all(
+            batch.map((msg) => this.fetchMessageDetail(accessToken, msg.id))
+          );
+          allMessages.push(...batchResults.filter((m): m is GmailMessage => m !== null));
+        }
+      } catch (error) {
+        console.error(`[Gmail] Error fetching from ${email}:`, error);
+      }
     }
 
-    const listData = await listResponse.json();
-    const messageIds: { id: string; threadId: string }[] = listData.messages ?? [];
+    return allMessages;
+  }
 
-    if (messageIds.length === 0) return [];
-
-    const messages: GmailMessage[] = [];
-    const batchSize = 10;
-
-    for (let i = 0; i < messageIds.length; i += batchSize) {
-      const batch = messageIds.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map((msg) => this.fetchMessageDetail(accessToken, msg.id))
-      );
-      messages.push(...batchResults.filter((m): m is GmailMessage => m !== null));
+  private async fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 15000): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
     }
-
-    this.state.lastSync = new Date().toISOString();
-    return messages;
   }
 
   private async fetchMessageDetail(accessToken: string, messageId: string): Promise<GmailMessage | null> {
     try {
-      const response = await fetch(
+      const response = await this.fetchWithTimeout(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
@@ -345,10 +406,7 @@ class GmailService {
       if (data.payload?.body?.data) {
         body = this.decodeBase64(data.payload.body.data);
       } else if (data.payload?.parts) {
-        const textPart = data.payload.parts.find((p: { mimeType: string }) => p.mimeType === 'text/plain');
-        if (textPart?.body?.data) {
-          body = this.decodeBase64(textPart.body.data);
-        }
+        body = this.extractBodyFromParts(data.payload.parts);
       }
 
       return {
@@ -363,6 +421,33 @@ class GmailService {
     } catch {
       return null;
     }
+  }
+
+  private extractBodyFromParts(parts: Array<{ mimeType: string; body?: { data?: string }; parts?: unknown[] }>): string {
+    // Try text/plain first
+    const textPart = parts.find((p) => p.mimeType === 'text/plain');
+    if (textPart?.body?.data) {
+      return this.decodeBase64(textPart.body.data);
+    }
+
+    // Fall back to text/html, strip tags
+    const htmlPart = parts.find((p) => p.mimeType === 'text/html');
+    if (htmlPart?.body?.data) {
+      const html = this.decodeBase64(htmlPart.body.data);
+      return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    // Check nested multipart (e.g., multipart/alternative inside multipart/mixed)
+    for (const part of parts) {
+      if (part.parts) {
+        const nested = this.extractBodyFromParts(
+          part.parts as Array<{ mimeType: string; body?: { data?: string }; parts?: unknown[] }>
+        );
+        if (nested) return nested;
+      }
+    }
+
+    return '';
   }
 
   private decodeBase64(data: string): string {

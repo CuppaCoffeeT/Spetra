@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, View, Platform } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useStore } from '../src/store/useStore';
@@ -9,16 +9,19 @@ const hasOAuthHash =
   typeof window !== 'undefined' &&
   window.location.hash.includes('access_token');
 
+// Module-level flags survive React strict mode remounts
+let initialized = false;
+let autoSynced = false;
+
 export default function RootLayout() {
-  const { session, authLoading, initAuth, initGmail, gmailState } = useStore();
-  const initialized = useRef(false);
+  const { session, authLoading, initAuth, initGmail, gmailState, syncEmails } = useStore();
   const router = useRouter();
   const segments = useSegments();
   const [oauthPending, setOauthPending] = useState(hasOAuthHash);
 
   useEffect(() => {
-    if (!initialized.current) {
-      initialized.current = true;
+    if (!initialized) {
+      initialized = true;
       initAuth();
       initGmail();
     }
@@ -29,17 +32,37 @@ export default function RootLayout() {
   useEffect(() => {
     if (!oauthPending || authLoading) return;
 
-    if (gmailState.isConnected) {
+    if (gmailState.accounts.length > 0) {
       setOauthPending(false);
       if (session) {
         router.replace('/(app)/settings');
       }
-    } else if (!session) {
-      // Auth settled with no session - can't stay pending, let user log in
+    } else if (!session || !authLoading) {
+      // Auth settled with no session, or initGmail finished without finding accounts
       // Gmail tokens are already saved, they'll be picked up after login
       setOauthPending(false);
     }
   }, [oauthPending, gmailState, authLoading, session, router]);
+
+  // Auto-sync emails on app load when logged in with Gmail accounts
+  useEffect(() => {
+    if (autoSynced || authLoading || oauthPending) return;
+    if (session && gmailState.accounts.length > 0) {
+      autoSynced = true;
+      syncEmails().catch(() => {});
+    }
+  }, [session, gmailState, authLoading, oauthPending, syncEmails]);
+
+  // Periodic auto-sync every 5 minutes while the app is open
+  useEffect(() => {
+    if (!session || gmailState.accounts.length === 0) return;
+
+    const interval = setInterval(() => {
+      syncEmails().catch(() => {});
+    }, 5 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [session, gmailState.accounts.length, syncEmails]);
 
   useEffect(() => {
     // Don't do auth routing while OAuth callback is being processed

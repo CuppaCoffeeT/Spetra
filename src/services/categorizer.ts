@@ -1,3 +1,16 @@
+export const CATEGORIES = [
+  'Transport',
+  'Groceries',
+  'Shopping',
+  'Food',
+  'Bills',
+  'Income',
+  'Transfer',
+  'Healthcare',
+  'Entertainment',
+  'Other',
+];
+
 const rules: Array<{ pattern: RegExp; category: string }> = [
   // Transport
   { pattern: /grab|gojek|tada|comfort|taxi|uber|mrt|bus|transit|shell|esso|petrol|caltex/i, category: 'Transport' },

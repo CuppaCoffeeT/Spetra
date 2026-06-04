@@ -38,8 +38,29 @@ export interface GmailMessage {
   body: string;
 }
 
-export interface GmailAuthState {
-  isConnected: boolean;
-  email?: string;
+export interface GmailAccount {
+  email: string;
   lastSync?: string;
+}
+
+export interface GmailAuthState {
+  accounts: GmailAccount[];
+}
+
+export interface BankAccount {
+  id: string;
+  userId: string;
+  bankName: string;
+  accountType: 'card' | 'account';
+  lastFourDigits: string;
+  label: string | null;
+  sourceEmail: string | null;
+  createdAt: string;
+}
+
+export interface BankAccountInput {
+  bankName: string;
+  accountType: 'card' | 'account';
+  lastFourDigits: string;
+  sourceEmail?: string;
 }
