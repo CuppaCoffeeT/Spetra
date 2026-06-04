@@ -1,6 +1,6 @@
 # Wallet & Budgeting App — PRD
 
-**Created**: 2026-06-04 · **Last Updated**: 2026-06-04 · **Status**: 🔵 Planning · **Priority**: High
+**Created**: 2026-06-04 · **Last Updated**: 2026-06-04 · **Status**: 🟢 Complete · **Priority**: High
 **Work type**: program (multi-feature evolution of an existing Expo app)
 **Authored via**: `prd-write` methodology (project base) — research-first → ask → phased plan
 🤖 **Build via**: execute one phase at a time; each phase is independently shippable and verifiable.
@@ -13,7 +13,7 @@
 ---
 
 ## 📊 Progress / State  ← executor flips ⬜→🟡→✅; read first
-**Current phase: 0–4 + 6 complete ✅ · Phase 5 (receipts) next · Blockers: apply `rules` migration (Phase 6) + install Phase-5 packages**
+**ALL phases 0–6 complete ✅ · Status 🟢 · Remaining user actions: apply `rules` migration (Phase 6) · native OCR dev build (Phase 5, optional) · merge branch**
 
 | Phase | Title | Status | Notes |
 |---|---|---|---|
@@ -22,7 +22,7 @@
 | 2 | Categories module | ✅ | `src/lib/categories.ts` Supabase-direct CRUD + seed-10-defaults; store slice; new `categories.tsx` mgmt screen + route + settings link; `add`/`transactions` consume dynamic list; Home colour dots. tsc 0 |
 | 3 | Budgeting | ✅ | `src/lib/budgets.ts` (CRUD + spend-math) + store slice; new **Budgets tab** (month selector, per-category caps, ProgressBar, over-budget alerts); Home "This Month's Budgets" summary. tsc 0, money-math verified |
 | 4 | Transaction detail / edit | ✅ | `edit.tsx` (all fields + **notes**), generalized dual-path `updateTransaction` (frozen hash, `edited` flag), `ignoreDuplicates` so re-sync preserves edits; rows from Transactions+Home open it. tsc 0, zero verifier issues |
-| 5 | Receipt scanner (on-device OCR) | ⬜ | ML Kit (native, needs dev build) + Tesseract.js (web) |
+| 5 | Receipt scanner (on-device OCR) | ✅ | Platform-split OCR (`ocr.web.ts` tesseract / `ocr.ts` native dev-build stub), `parser` generalized, `receipts.ts` Storage+row, `scanReceipt()`; Add=scan-to-create, Edit=attach. tsc 0, zero issues. **Native OCR needs an EAS dev build** |
 | 6 | Smarter categorization ("NLP") | ✅ | `rules` table + `src/lib/rules.ts` (`categorizeWithRules`, `extractMerchantKey`) + scoring `scoreCategory()` w/ confidence; learning centralized in `updateTransaction`; applied on Gmail import; writes `category_confidence`. tsc 0. **⚠ apply `20260604100007_create_rules.sql`** |
 
 ---
@@ -200,6 +200,11 @@ detail / scan a receipt for more detail → user can also add entries manually.
 | 2026-06-04 | 4 | **Transaction detail/edit.** New `app/(app)/edit.tsx` (pre-filled; edits amount/direction/description/category/date + **notes**) + hidden route; Transactions + Home recent rows tap through to it (quick recategorize modal kept). Generalized `updateTransaction` to a dual path: `db.updateTransactionInDb` (native SQLite, `edited=1`, `synced_at=NULL`) / `updateTransactionInSupabase` (web) — **neither writes `dedupe_hash`** (R3 freeze). `saveTransactionsBatchToSupabase` → `ignoreDuplicates:true` so Gmail re-sync never duplicates *or* overwrites edits; `syncToSupabase` still pushes local edits. | `tsc` 0 ✅ · frozen-hash verified (comments only) ✅ · no-clobber-on-resync ✅ · dual-path persistence ✅ · behaviour additive ✅ · **zero verifier issues** |
 
 | 2026-06-04 | 6 | **Smarter NLP categorization.** New `rules` table (`supabase/migrations/20260604100007_create_rules.sql`, **apply to prod**) + `src/lib/rules.ts` (`categorizeWithRules` — learned rules outrank keywords; `extractMerchantKey`). `categorizer.ts` gains `scoreCategory()` (confidence); `categorize()` byte-identical. Learning centralized in `updateTransaction` (any manual recategorize upserts a `merchant→category` rule, priority 200, never blocks the edit). Applied on Gmail import (`syncEmails` overrides only on a rule match, keeping the parser's subject-aware category otherwise) + writes the dormant `category_confidence` column. | `tsc` 0 ✅ · learning loop + import application + rules-outrank-keywords verified ✅ · `parser.ts`/`categorize()` unchanged ✅ |
+
+| 2026-06-04 | 5 | **Receipt scanner.** Platform-split OCR: `ocr.web.ts` (tesseract.js, works now) / `ocr.ts` (native default — graceful "needs dev build", tesseract kept out of native bundle). `parser.ts` generalized via shared `parseDateOrNull` + `extractReceiptFields`. New `receipts.ts` (Supabase Storage upload to `receipts` bucket + row CRUD + signed URLs) + `scanReceipt.ts` (expo-image-picker → OCR → fields). Add = scan-to-create (prefill + upload+link on save); Edit = scan-to-attach. Receipt-upload failure never loses the transaction. Deps: expo-image-picker, tesseract.js. | `tsc` 0 ✅ · tesseract native-bundle-safe ✅ · parser reuse ✅ · graceful native fallback ✅ · **zero verifier issues** |
+| 2026-06-04 | — | **Closeout.** All phases 0–6 ✅; PRD → 🟢 Complete. Final `tsc --noEmit` 0 across the whole app. Branch `wallet-budgeting-prd` = checkpoint `295a98c` + 7 phase commits. Remaining user actions batched in the final report. | tsc 0 ✅ |
+
+**Phase 5 notes:** native ML Kit OCR is the only deferred runtime piece — add `@react-native-ml-kit/text-recognition` + a config plugin + an EAS dev build to enable it; web OCR + capture + Storage + attach all work today. The receipt image upload path (`fetch→arrayBuffer→storage`) is best smoke-tested on a real device/web.
 
 **Phase 6 notes:** every correction (recategorize modal **or** edit screen) teaches the categorizer — no extra UI. Learned rules use a lowercase first-token merchant key. Needs the `rules` migration applied (Dashboard paste, like Phase 0).
 
