@@ -1,18 +1,17 @@
 import { useEffect, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  TextInput,
-  ActivityIndicator,
   RefreshControl,
   Platform,
   Alert,
 } from 'react-native';
 import { useStore } from '../../src/store/useStore';
 import type { BankAccount } from '../../src/types';
+import { Screen, Text, Card, Button, Input } from '@/src/components/ui';
+import { radii, spacing, useColors } from '@/src/theme';
 
 function notify(title: string, message: string) {
   if (Platform.OS === 'web') {
@@ -31,6 +30,8 @@ export default function AccountsScreen() {
     updateBankAccountLabel,
     session,
   } = useStore();
+
+  const c = useColors();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState('');
@@ -70,31 +71,28 @@ export default function AccountsScreen() {
     const icon = account.accountType === 'card' ? 'Card' : 'A/C';
 
     return (
-      <View key={account.id} style={styles.accountCard}>
+      <Card key={account.id} style={styles.accountCard}>
         <View style={styles.accountHeader}>
-          <View style={styles.accountTypeContainer}>
-            <Text style={styles.accountTypeIcon}>{icon}</Text>
+          <View style={[styles.accountTypeContainer, { backgroundColor: c.surfaceAlt }]}>
+            <Text variant="label" color="accent">
+              {icon}
+            </Text>
           </View>
           <View style={styles.accountInfo}>
-            <Text style={styles.accountDigits}>
+            <Text variant="heading" style={styles.accountDigits}>
               {account.accountType === 'card' ? 'Card' : 'Account'} ending{' '}
               {account.lastFourDigits}
             </Text>
             {isEditing ? (
               <View style={styles.editRow}>
-                <TextInput
-                  style={styles.editInput}
+                <Input
+                  containerStyle={styles.editInput}
                   value={editLabel}
                   onChangeText={setEditLabel}
                   placeholder="Add a label..."
                   autoFocus
                 />
-                <TouchableOpacity
-                  style={styles.editSaveBtn}
-                  onPress={() => handleSaveLabel(account.id)}
-                >
-                  <Text style={styles.editSaveBtnText}>Save</Text>
-                </TouchableOpacity>
+                <Button title="Save" onPress={() => handleSaveLabel(account.id)} />
               </View>
             ) : (
               <TouchableOpacity
@@ -103,21 +101,21 @@ export default function AccountsScreen() {
                   setEditLabel(account.label || '');
                 }}
               >
-                <Text style={styles.accountLabel}>
+                <Text variant="body" color="muted">
                   {account.label || 'Tap to add label'}
                 </Text>
               </TouchableOpacity>
             )}
           </View>
         </View>
-      </View>
+      </Card>
     );
   };
 
   const bankNames = Object.keys(grouped).sort();
 
   return (
-    <View style={styles.container}>
+    <Screen padded={false}>
       <FlatList
         data={bankNames}
         keyExtractor={(item) => item}
@@ -126,29 +124,30 @@ export default function AccountsScreen() {
         }
         contentContainerStyle={styles.list}
         ListHeaderComponent={
-          <TouchableOpacity
-            style={styles.detectButton}
+          <Button
+            title="Detect Accounts from Emails"
             onPress={handleDetect}
             disabled={bankAccountsLoading}
-          >
-            {bankAccountsLoading ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.detectButtonText}>Detect Accounts from Emails</Text>
-            )}
-          </TouchableOpacity>
+            loading={bankAccountsLoading}
+            fullWidth
+            style={styles.detectButton}
+          />
         }
         renderItem={({ item: bankName }) => (
           <View style={styles.bankSection}>
-            <Text style={styles.bankName}>{bankName}</Text>
+            <Text variant="title" style={styles.bankName}>
+              {bankName}
+            </Text>
             {grouped[bankName].map(renderAccount)}
           </View>
         )}
         ListEmptyComponent={
           !bankAccountsLoading ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No Accounts Detected</Text>
-              <Text style={styles.emptyText}>
+              <Text variant="heading" style={styles.emptyTitle}>
+                No Accounts Detected
+              </Text>
+              <Text variant="body" color="secondary" style={styles.emptyText}>
                 Sync your emails first, then tap "Detect Accounts" to find bank accounts and cards
                 from your transaction emails.
               </Text>
@@ -156,49 +155,25 @@ export default function AccountsScreen() {
           ) : null
         }
       />
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
   list: {
-    padding: 16,
+    padding: spacing.lg,
   },
   detectButton: {
-    backgroundColor: '#3b82f6',
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  detectButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    marginBottom: spacing.xl,
   },
   bankSection: {
-    marginBottom: 24,
+    marginBottom: spacing.xl,
   },
   bankName: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1e293b',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   accountCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
+    marginBottom: spacing.sm,
   },
   accountHeader: {
     flexDirection: 'row',
@@ -207,72 +182,35 @@ const styles = StyleSheet.create({
   accountTypeContainer: {
     width: 44,
     height: 44,
-    borderRadius: 10,
-    backgroundColor: '#eff6ff',
+    borderRadius: radii.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
-  },
-  accountTypeIcon: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#3b82f6',
+    marginRight: spacing.md,
   },
   accountInfo: {
     flex: 1,
   },
   accountDigits: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1e293b',
-    marginBottom: 4,
-  },
-  accountLabel: {
-    fontSize: 14,
-    color: '#94a3b8',
+    marginBottom: spacing.xs,
   },
   editRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 4,
+    gap: spacing.sm,
+    marginTop: spacing.xs,
   },
   editInput: {
     flex: 1,
-    backgroundColor: '#f8fafc',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  editSaveBtn: {
-    backgroundColor: '#3b82f6',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  editSaveBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
   },
   empty: {
     alignItems: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 40,
+    paddingVertical: spacing.xxxl,
+    paddingHorizontal: spacing.xxl,
   },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1e293b',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   emptyText: {
-    fontSize: 14,
-    color: '#64748b',
     textAlign: 'center',
-    lineHeight: 20,
   },
 });

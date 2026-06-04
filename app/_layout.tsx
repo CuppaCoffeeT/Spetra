@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, View, Platform } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useStore } from '../src/store/useStore';
+import { useColors } from '@/src/theme';
 
 // Check synchronously on module load if we're returning from OAuth
 const hasOAuthHash =
@@ -17,6 +18,7 @@ export default function RootLayout() {
   const { session, authLoading, initAuth, initGmail, gmailState, syncEmails } = useStore();
   const router = useRouter();
   const segments = useSegments();
+  const c = useColors();
   const [oauthPending, setOauthPending] = useState(hasOAuthHash);
 
   useEffect(() => {
@@ -79,8 +81,8 @@ export default function RootLayout() {
 
   if (authLoading || oauthPending) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.bg }}>
+        <ActivityIndicator size="large" color={c.primary} />
       </View>
     );
   }

@@ -13,12 +13,12 @@
 ---
 
 ## 📊 Progress / State  ← executor flips ⬜→🟡→✅; read first
-**Current phase: 0 complete ✅ → ready for Phase 1 (design system) · Blockers: none**
+**Current phase: 1 complete ✅ → ready for Phase 2 (categories) · Blockers: none**
 
 | Phase | Title | Status | Notes |
 |---|---|---|---|
 | 0 | Foundations & schema | ✅ | Migrations applied to prod 2026-06-04; SQLite schema + TS types tsc-green. Reconciled 2 pre-existing empty stub tables (categories, budgets) + fixed FK types to uuid |
-| 1 | Design system (design-first) | ⬜ | designer-skills → tokens + RN primitives → refactor 5 screens |
+| 1 | Design system (design-first) | ✅ | `src/theme/` tokens (light+dark) + 11 RN primitives + `.design/` brief; refactored all 8 screens onto them, behavior-preserved. tsc 0, no raw hex |
 | 2 | Categories module | ⬜ | Replace hardcoded `CATEGORIES` with editable table |
 | 3 | Budgeting | ⬜ | Per-category monthly caps + progress + alerts |
 | 4 | Transaction detail / edit | ⬜ | Full edit screen — enables "edit later to add detail" |
@@ -188,6 +188,14 @@ detail / scan a receipt for more detail → user can also add entries manually.
 |---|---|---|---|
 | 2026-06-04 | 0 | 7 idempotent migrations (`bank_accounts` baseline, `transactions` baseline, `categories`, `budgets`, `receipts`, `extend_transactions`, `receipts` storage bucket+policies); `db.ts` SQLite schema + `PRAGMA user_version` migration for existing installs; `Transaction` extended + `Category`/`Budget`/`Receipt` types; `sync.ts` read mappings. Built via parallel-implement + adversarial-verify workflow. | `tsc --noEmit` 0 errors ✅ · column parity SQLite⇄Supabase⇄TS ✅ · RLS+owner policy on every table ✅ · idempotent+FK-ordered ✅ |
 | 2026-06-04 | 0 | **Applied to prod** via Dashboard SQL Editor (project `fpasfffeywotrclprcai`). Discovered + reconciled 2 pre-existing **empty** stub tables: dropped `categories` (minimal) + `budgets` (incompatible `name/period/currency/amount/starts_on` design), recreated to PRD schema. Fixed FK type bug: `transactions.id` is **uuid** (not text) → corrected `receipts.transaction_id` + baseline `transactions.id` to `uuid`. | Applied clean ✅ · all FKs uuid↔uuid ✅ · `tsc` 0 ✅ |
+| 2026-06-04 | — | **Base reconciliation**: the worktree had branched from the last commit (`a963f64`), which predated large uncommitted WIP in main (multi-account Gmail, bank accounts, `accounts`/`add` screens, batch sync). Committed that WIP as checkpoint `295a98c`, rebased Phase 0 onto it (resolved one `types/index.ts` conflict — kept both BankAccount + Category/Budget/Receipt; `sync.ts`/`db.ts` auto-merged preserving both batch/bank fns + Phase 0 read-mappings). | `tsc` 0 ✅ · Phase 0 changes verified intact post-rebase ✅ |
+| 2026-06-04 | 1 | **Design system.** `src/theme/` ("quiet ledger" tokens: light+dark palette, spacing/radii/typography/shadow) + `.design/design-brief.md`. 11 RN primitives in `src/components/ui/` (Screen, Text, Card, Button, Input, Chip, ProgressBar, ListRow, AmountText, SectionHeader, FAB) + barrel. Refactored all 8 screens (`index`, `transactions`, `accounts`, `settings`, `add`, `login`, both `_layout`s) onto primitives+tokens. Added `Chip.selectedColor` to restore Expense/Income red-green. Built via primitives→screens→adversarial-verify workflow (12 agents). | `tsc --noEmit` 0 ✅ · no raw hex in `ui/`+`app/` ✅ · per-screen `git diff` behaviour-preservation audit passed (handlers/store/router/validation unchanged) ✅ · 11 primitives + barrel ✅ |
+
+**Phase 1 notes (for later phases):**
+- New palette is a deliberate refresh: ink-black primary + single indigo accent (was blue). Vibe is token-driven — tune `src/theme/tokens.ts` to adjust globally.
+- `ProgressBar` primitive is built and ready for Phase 3 budgets.
+- Pre-existing (not introduced): `transactions.tsx` category modal list isn't wrapped in a ScrollView — revisit if `CATEGORIES` grows.
+- **Visual verification still owed**: run `npx expo start` (web/iOS/Android) to eyeball the new look — `tsc` + diff audit confirm correctness but not pixels.
 
 **Phase 0 reality notes (for Phase 2/3):**
 - Pre-existing empty stubs `categories` + `budgets` were dropped & rebuilt — the app code never used them (categorizer uses a hardcoded const; no budget feature). Phase 2/3 build on the new schema.

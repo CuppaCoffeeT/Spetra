@@ -1,22 +1,22 @@
 import { useState } from 'react';
 import {
   View,
-  Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { useStore } from '../src/store/useStore';
+import { Text, Input, Button } from '@/src/components/ui';
+import { spacing, useColors } from '@/src/theme';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const { signIn, signUp, authLoading } = useStore();
+  const c = useColors();
 
   const handleSubmit = async () => {
     if (!email || !password) {
@@ -39,15 +39,18 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
+      style={[styles.container, { backgroundColor: c.bg }]}
     >
       <View style={styles.content}>
-        <Text style={styles.title}>Spend Tracker</Text>
-        <Text style={styles.subtitle}>Track your expenses from email</Text>
+        <Text variant="display" style={styles.title}>
+          Spend Tracker
+        </Text>
+        <Text variant="body" color="secondary" style={styles.subtitle}>
+          Track your expenses from email
+        </Text>
 
         <View style={styles.form}>
-          <TextInput
-            style={styles.input}
+          <Input
             placeholder="Email"
             value={email}
             onChangeText={setEmail}
@@ -55,8 +58,7 @@ export default function LoginScreen() {
             keyboardType="email-address"
             editable={!authLoading}
           />
-          <TextInput
-            style={styles.input}
+          <Input
             placeholder="Password"
             value={password}
             onChangeText={setPassword}
@@ -64,24 +66,21 @@ export default function LoginScreen() {
             editable={!authLoading}
           />
 
-          <TouchableOpacity
-            style={[styles.button, authLoading && styles.buttonDisabled]}
+          <Button
+            title={isSignUp ? 'Sign Up' : 'Sign In'}
             onPress={handleSubmit}
+            loading={authLoading}
             disabled={authLoading}
-          >
-            {authLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>{isSignUp ? 'Sign Up' : 'Sign In'}</Text>
-            )}
-          </TouchableOpacity>
+            fullWidth
+            style={styles.button}
+          />
 
           <TouchableOpacity
             style={styles.switchButton}
             onPress={() => setIsSignUp(!isSignUp)}
             disabled={authLoading}
           >
-            <Text style={styles.switchText}>
+            <Text variant="caption" color="accent">
               {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
             </Text>
           </TouchableOpacity>
@@ -94,59 +93,28 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
   },
   content: {
     flex: 1,
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: spacing.xl,
   },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#1e293b',
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#64748b',
     textAlign: 'center',
-    marginBottom: 48,
+    marginBottom: spacing.xxxl,
   },
   form: {
-    gap: 16,
-  },
-  input: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
+    gap: spacing.lg,
   },
   button: {
-    backgroundColor: '#3b82f6',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    marginTop: spacing.sm,
   },
   switchButton: {
     alignItems: 'center',
-    paddingVertical: 12,
-  },
-  switchText: {
-    color: '#3b82f6',
-    fontSize: 14,
+    paddingVertical: spacing.md,
   },
 });

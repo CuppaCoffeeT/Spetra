@@ -1,6 +1,8 @@
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Platform } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Alert, Platform } from 'react-native';
 import { useStore } from '../../src/store/useStore';
 import type { GmailAccount } from '../../src/types';
+import { Screen, Card, SectionHeader, ListRow, Button, Text } from '@/src/components/ui';
+import { spacing, radii, useColors } from '@/src/theme';
 
 function confirm(title: string, message: string, onConfirm: () => void) {
   if (Platform.OS === 'web') {
@@ -37,6 +39,8 @@ export default function SettingsScreen() {
     syncLoading,
   } = useStore();
 
+  const c = useColors();
+
   const hasAccounts = gmailState.accounts.length > 0;
 
   const handleConnectGmail = async () => {
@@ -69,208 +73,122 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <Screen scroll>
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Account</Text>
-        <View style={styles.card}>
-          <Text style={styles.label}>Email</Text>
-          <Text style={styles.value}>{session?.user?.email || 'Not signed in'}</Text>
-        </View>
+        <SectionHeader title="Account" />
+        <Card>
+          <Text variant="label" color="secondary">Email</Text>
+          <Text variant="body" style={styles.value}>{session?.user?.email || 'Not signed in'}</Text>
+        </Card>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Gmail Accounts</Text>
-        <View style={styles.card}>
+        <SectionHeader title="Gmail Accounts" />
+        <Card>
           {hasAccounts ? (
             <>
               {gmailState.accounts.map((account) => (
-                <View key={account.email} style={styles.accountRow}>
-                  <View style={styles.accountInfo}>
-                    <Text style={styles.accountEmail}>{account.email}</Text>
-                    <Text style={[styles.status, styles.connected]}>Connected</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={() => handleDisconnectGmail(account)}
-                    disabled={gmailLoading}
-                  >
-                    <Text style={styles.removeButtonText}>Remove</Text>
-                  </TouchableOpacity>
-                </View>
+                <ListRow
+                  key={account.email}
+                  title={account.email}
+                  right={
+                    <View style={styles.accountRight}>
+                      <Text variant="label" color="income">Connected</Text>
+                      <TouchableOpacity
+                        style={[styles.removeButton, { borderColor: c.expense }]}
+                        onPress={() => handleDisconnectGmail(account)}
+                        disabled={gmailLoading}
+                      >
+                        <Text variant="label" color="expense">Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  }
+                />
               ))}
 
               <View style={styles.buttonGroup}>
-                <TouchableOpacity
-                  style={[styles.button, styles.primaryButton]}
+                <Button
+                  title="Sync All Emails"
                   onPress={handleSyncEmails}
                   disabled={gmailLoading}
-                >
-                  {gmailLoading ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <Text style={styles.buttonText}>Sync All Emails</Text>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.button, styles.outlineButton]}
+                  loading={gmailLoading}
+                />
+                <Button
+                  title="Add Gmail Account"
+                  variant="ghost"
                   onPress={handleConnectGmail}
                   disabled={gmailLoading}
-                >
-                  <Text style={styles.outlineButtonText}>Add Gmail Account</Text>
-                </TouchableOpacity>
+                  style={[styles.outlineButton, { borderColor: c.accent }]}
+                />
               </View>
             </>
           ) : (
             <>
-              <Text style={[styles.status, { marginBottom: 16 }]}>No accounts connected</Text>
-              <TouchableOpacity
-                style={[styles.button, styles.primaryButton]}
+              <Text variant="body" color="expense" style={styles.emptyStatus}>No accounts connected</Text>
+              <Button
+                title="Connect Gmail"
                 onPress={handleConnectGmail}
                 disabled={gmailLoading}
-              >
-                {gmailLoading ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.buttonText}>Connect Gmail</Text>
-                )}
-              </TouchableOpacity>
+                loading={gmailLoading}
+              />
             </>
           )}
-        </View>
+        </Card>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Data</Text>
-        <View style={styles.card}>
-          <TouchableOpacity
-            style={[styles.button, styles.outlineButton]}
+        <SectionHeader title="Data" />
+        <Card>
+          <Button
+            title="Sync with Cloud"
+            variant="ghost"
             onPress={syncData}
             disabled={syncLoading}
-          >
-            {syncLoading ? (
-              <ActivityIndicator color="#3b82f6" size="small" />
-            ) : (
-              <Text style={styles.outlineButtonText}>Sync with Cloud</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+            loading={syncLoading}
+            style={[styles.outlineButton, { borderColor: c.accent }]}
+          />
+        </Card>
       </View>
 
       <View style={styles.section}>
-        <TouchableOpacity
-          style={[styles.button, styles.dangerButton]}
+        <Button
+          title="Sign Out"
           onPress={handleSignOut}
           disabled={authLoading}
-        >
-          {authLoading ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Text style={styles.buttonText}>Sign Out</Text>
-          )}
-        </TouchableOpacity>
+          loading={authLoading}
+          style={{ backgroundColor: c.expense }}
+        />
       </View>
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
   section: {
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748b',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  label: {
-    fontSize: 14,
-    color: '#64748b',
-    marginBottom: 4,
+    padding: spacing.lg,
   },
   value: {
-    fontSize: 16,
-    color: '#1e293b',
+    marginTop: spacing.xs,
   },
-  status: {
-    fontSize: 14,
-    color: '#ef4444',
-    fontWeight: '500',
-  },
-  connected: {
-    color: '#22c55e',
-  },
-  accountRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  accountInfo: {
-    flex: 1,
-  },
-  accountEmail: {
-    fontSize: 16,
-    color: '#1e293b',
-    fontWeight: '500',
-  },
-  removeButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#ef4444',
-  },
-  removeButtonText: {
-    color: '#ef4444',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  buttonGroup: {
-    gap: 12,
-    marginTop: 16,
-  },
-  button: {
-    borderRadius: 8,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  primaryButton: {
-    backgroundColor: '#3b82f6',
+  emptyStatus: {
+    marginBottom: spacing.lg,
   },
   outlineButton: {
-    backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: '#3b82f6',
   },
-  dangerButton: {
-    backgroundColor: '#ef4444',
+  buttonGroup: {
+    gap: spacing.md,
+    marginTop: spacing.lg,
   },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+  accountRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
-  outlineButtonText: {
-    color: '#3b82f6',
-    fontSize: 16,
-    fontWeight: '600',
+  removeButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.sm,
+    borderWidth: 1,
   },
 });

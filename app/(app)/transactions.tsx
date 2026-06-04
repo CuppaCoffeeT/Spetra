@@ -1,21 +1,23 @@
 import { useEffect, useState, useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
   RefreshControl,
   TouchableOpacity,
   Modal,
   ScrollView,
-  Platform,
 } from 'react-native';
 import { useStore } from '../../src/store/useStore';
 import { CATEGORIES } from '../../src/services/categorizer';
+import { Screen, Text, Card, ListRow, Chip, AmountText } from '@/src/components/ui';
+import { spacing, radii, useColors } from '@/src/theme';
 
 export default function TransactionsScreen() {
   const { transactions, transactionsLoading, loadTransactions, updateTransaction, session } =
     useStore();
+
+  const c = useColors();
 
   const [selectedMonth, setSelectedMonth] = useState<Date | null>(() => {
     const now = new Date();
@@ -61,25 +63,26 @@ export default function TransactionsScreen() {
     date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
   const renderTransaction = ({ item }: { item: (typeof transactions)[0] }) => (
-    <View style={styles.transactionCard}>
+    <Card style={styles.transactionCard}>
       <View style={styles.transactionHeader}>
-        <Text style={styles.transactionDesc} numberOfLines={1}>
+        <Text variant="heading" numberOfLines={1} style={styles.transactionDesc}>
           {item.description}
         </Text>
-        <Text
-          style={[
-            styles.transactionAmount,
-            item.direction === 'out' ? styles.spent : styles.income,
-          ]}
-        >
-          {item.direction === 'out' ? '-' : '+'}${item.amount.toFixed(2)}
-        </Text>
+        <AmountText
+          amount={item.amount}
+          direction={item.direction === 'out' ? 'out' : 'in'}
+          variant="heading"
+        />
       </View>
       <View style={styles.transactionMeta}>
         <TouchableOpacity onPress={() => setCategoryModalTxId(item.id)}>
-          <Text style={styles.category}>{item.category || 'Uncategorized'}</Text>
+          <View style={[styles.category, { backgroundColor: c.surfaceAlt }]}>
+            <Text variant="label" color="accent">
+              {item.category || 'Uncategorized'}
+            </Text>
+          </View>
         </TouchableOpacity>
-        <Text style={styles.date}>
+        <Text variant="label" color="secondary">
           {new Date(item.transactionDate).toLocaleDateString('en-US', {
             month: 'short',
             day: 'numeric',
@@ -88,43 +91,39 @@ export default function TransactionsScreen() {
         </Text>
       </View>
       {item.source === 'manual' && (
-        <Text style={styles.source}>Manual entry</Text>
+        <Text variant="caption" color="muted" style={styles.source}>
+          Manual entry
+        </Text>
       )}
-    </View>
+    </Card>
   );
 
   return (
-    <View style={styles.container}>
+    <Screen>
       {/* Month selector */}
-      <View style={styles.monthBar}>
+      <View style={[styles.monthBar, { backgroundColor: c.surface, borderBottomColor: c.border }]}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.monthBarContent}
         >
-          <TouchableOpacity
-            style={[styles.monthPill, !selectedMonth && styles.monthPillActive]}
+          <Chip
+            label="All"
+            selected={!selectedMonth}
             onPress={() => setSelectedMonth(null)}
-          >
-            <Text style={[styles.monthPillText, !selectedMonth && styles.monthPillTextActive]}>
-              All
-            </Text>
-          </TouchableOpacity>
+          />
           {months.map((m) => {
             const isActive =
               selectedMonth &&
               m.getMonth() === selectedMonth.getMonth() &&
               m.getFullYear() === selectedMonth.getFullYear();
             return (
-              <TouchableOpacity
+              <Chip
                 key={m.toISOString()}
-                style={[styles.monthPill, isActive && styles.monthPillActive]}
+                label={formatMonth(m)}
+                selected={!!isActive}
                 onPress={() => setSelectedMonth(m)}
-              >
-                <Text style={[styles.monthPillText, isActive && styles.monthPillTextActive]}>
-                  {formatMonth(m)}
-                </Text>
-              </TouchableOpacity>
+              />
             );
           })}
         </ScrollView>
@@ -140,8 +139,10 @@ export default function TransactionsScreen() {
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>No Transactions</Text>
-            <Text style={styles.emptyText}>
+            <Text variant="title" style={styles.emptyTitle}>
+              No Transactions
+            </Text>
+            <Text variant="body" color="secondary" style={styles.emptyText}>
               {selectedMonth
                 ? `No transactions for ${formatMonth(selectedMonth)}.`
                 : 'Connect your Gmail in Settings to sync transactions from UOB and Revolut emails.'}
@@ -158,97 +159,53 @@ export default function TransactionsScreen() {
         onRequestClose={() => setCategoryModalTxId(null)}
       >
         <TouchableOpacity
-          style={styles.modalOverlay}
+          style={[styles.modalOverlay, { backgroundColor: c.overlay }]}
           activeOpacity={1}
           onPress={() => setCategoryModalTxId(null)}
         >
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Select Category</Text>
+          <View style={[styles.modalContent, { backgroundColor: c.surface }]}>
+            <Text variant="heading" style={styles.modalTitle}>
+              Select Category
+            </Text>
             {CATEGORIES.map((cat) => (
-              <TouchableOpacity
+              <ListRow
                 key={cat}
-                style={styles.categoryOption}
+                title={cat}
                 onPress={() => categoryModalTxId && handleCategoryChange(categoryModalTxId, cat)}
-              >
-                <Text style={styles.categoryOptionText}>{cat}</Text>
-              </TouchableOpacity>
+              />
             ))}
           </View>
         </TouchableOpacity>
       </Modal>
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
   monthBar: {
-    backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
   },
   monthBarContent: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
-  },
-  monthPill: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#f1f5f9',
-  },
-  monthPillActive: {
-    backgroundColor: '#3b82f6',
-  },
-  monthPillText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#64748b',
-  },
-  monthPillTextActive: {
-    color: '#fff',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
   },
   list: {
-    padding: 16,
+    padding: spacing.lg,
   },
   transactionCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
+    marginBottom: spacing.md,
   },
   transactionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   transactionDesc: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#1e293b',
     flex: 1,
-    marginRight: 12,
-  },
-  transactionAmount: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  spent: {
-    color: '#ef4444',
-  },
-  income: {
-    color: '#22c55e',
+    marginRight: spacing.md,
   },
   transactionMeta: {
     flexDirection: 'row',
@@ -256,67 +213,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   category: {
-    fontSize: 14,
-    color: '#3b82f6',
-    backgroundColor: '#eff6ff',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  date: {
-    fontSize: 14,
-    color: '#64748b',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs / 2,
+    borderRadius: radii.sm,
   },
   source: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
   empty: {
     alignItems: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 40,
+    paddingVertical: spacing.xxxl,
+    paddingHorizontal: spacing.xxl,
   },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1e293b',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   emptyText: {
-    fontSize: 14,
-    color: '#64748b',
     textAlign: 'center',
-    lineHeight: 20,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: radii.lg,
+    padding: spacing.xl,
     width: 280,
     maxHeight: '70%',
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1e293b',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
     textAlign: 'center',
-  },
-  categoryOption: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  categoryOptionText: {
-    fontSize: 16,
-    color: '#1e293b',
   },
 });

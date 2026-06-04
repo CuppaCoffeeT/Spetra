@@ -1,17 +1,10 @@
 import { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  Platform,
-  Alert,
-} from 'react-native';
+import { View, StyleSheet, Platform, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useStore } from '../../src/store/useStore';
 import { CATEGORIES } from '../../src/services/categorizer';
+import { Screen, Text, Input, Button, Chip } from '@/src/components/ui';
+import { spacing, useColors } from '@/src/theme';
 
 function notify(title: string, message: string) {
   if (Platform.OS === 'web') {
@@ -24,6 +17,7 @@ function notify(title: string, message: string) {
 export default function AddTransactionScreen() {
   const router = useRouter();
   const { addTransaction } = useStore();
+  const c = useColors();
 
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -68,208 +62,120 @@ export default function AddTransactionScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Add Transaction</Text>
+    <Screen scroll padded>
+      <Text variant="title" style={styles.title}>
+        Add Transaction
+      </Text>
 
       {/* Direction toggle */}
       <View style={styles.directionRow}>
-        <TouchableOpacity
-          style={[styles.directionBtn, direction === 'out' && styles.directionBtnActiveOut]}
+        <Chip
+          label="Expense"
+          selected={direction === 'out'}
+          selectedColor={c.expense}
           onPress={() => setDirection('out')}
-        >
-          <Text
-            style={[
-              styles.directionBtnText,
-              direction === 'out' && styles.directionBtnTextActive,
-            ]}
-          >
-            Expense
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.directionBtn, direction === 'in' && styles.directionBtnActiveIn]}
+          style={styles.directionChip}
+        />
+        <Chip
+          label="Income"
+          selected={direction === 'in'}
+          selectedColor={c.income}
           onPress={() => setDirection('in')}
-        >
-          <Text
-            style={[
-              styles.directionBtnText,
-              direction === 'in' && styles.directionBtnTextActive,
-            ]}
-          >
-            Income
-          </Text>
-        </TouchableOpacity>
+          style={styles.directionChip}
+        />
       </View>
 
       {/* Amount */}
-      <Text style={styles.label}>Amount (SGD)</Text>
-      <TextInput
-        style={styles.input}
+      <Input
+        label="Amount (SGD)"
         placeholder="0.00"
         keyboardType="decimal-pad"
         value={amount}
         onChangeText={setAmount}
+        containerStyle={styles.field}
       />
 
       {/* Description */}
-      <Text style={styles.label}>Description</Text>
-      <TextInput
-        style={styles.input}
+      <Input
+        label="Description"
         placeholder="What was this for?"
         value={description}
         onChangeText={setDescription}
+        containerStyle={styles.field}
       />
 
       {/* Date */}
-      <Text style={styles.label}>Date</Text>
-      <TextInput
-        style={styles.input}
+      <Input
+        label="Date"
         placeholder="YYYY-MM-DD"
         value={date}
         onChangeText={setDate}
+        containerStyle={styles.field}
       />
 
       {/* Category */}
-      <Text style={styles.label}>Category</Text>
+      <Text variant="label" color="muted" style={styles.label}>
+        Category
+      </Text>
       <View style={styles.categoryGrid}>
         {CATEGORIES.map((cat) => (
-          <TouchableOpacity
+          <Chip
             key={cat}
-            style={[styles.categoryChip, category === cat && styles.categoryChipActive]}
+            label={cat}
+            selected={category === cat}
             onPress={() => setCategory(cat)}
-          >
-            <Text
-              style={[
-                styles.categoryChipText,
-                category === cat && styles.categoryChipTextActive,
-              ]}
-            >
-              {cat}
-            </Text>
-          </TouchableOpacity>
+          />
         ))}
       </View>
 
       {/* Save */}
-      <TouchableOpacity
-        style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+      <Button
+        title={saving ? 'Saving...' : 'Save Transaction'}
         onPress={handleSave}
         disabled={saving}
-      >
-        <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Save Transaction'}</Text>
-      </TouchableOpacity>
+        fullWidth
+        style={styles.saveButton}
+      />
 
-      <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()}>
-        <Text style={styles.cancelButtonText}>Cancel</Text>
-      </TouchableOpacity>
-    </ScrollView>
+      <Button
+        title="Cancel"
+        variant="ghost"
+        onPress={() => router.back()}
+        fullWidth
+        style={styles.cancelButton}
+      />
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
-  content: {
-    padding: 20,
-  },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1e293b',
-    marginBottom: 24,
+    marginBottom: spacing.xl,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748b',
-    marginBottom: 8,
-    marginTop: 16,
+    marginBottom: spacing.sm,
+    marginTop: spacing.lg,
   },
-  input: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 16,
-    color: '#1e293b',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+  field: {
+    marginTop: spacing.lg,
   },
   directionRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 8,
+    gap: spacing.md,
+    marginBottom: spacing.sm,
   },
-  directionBtn: {
+  directionChip: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    backgroundColor: '#f1f5f9',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  directionBtnActiveOut: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#ef4444',
-  },
-  directionBtnActiveIn: {
-    backgroundColor: '#f0fdf4',
-    borderColor: '#22c55e',
-  },
-  directionBtnText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  directionBtnTextActive: {
-    color: '#1e293b',
   },
   categoryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-  },
-  categoryChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#f1f5f9',
-  },
-  categoryChipActive: {
-    backgroundColor: '#3b82f6',
-  },
-  categoryChipText: {
-    fontSize: 14,
-    color: '#64748b',
-    fontWeight: '500',
-  },
-  categoryChipTextActive: {
-    color: '#fff',
+    gap: spacing.sm,
   },
   saveButton: {
-    backgroundColor: '#3b82f6',
-    borderRadius: 10,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 32,
-  },
-  saveButtonDisabled: {
-    opacity: 0.6,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    marginTop: spacing.xxl,
   },
   cancelButton: {
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  cancelButtonText: {
-    color: '#64748b',
-    fontSize: 16,
+    marginTop: spacing.sm,
   },
 });
