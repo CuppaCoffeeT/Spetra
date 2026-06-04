@@ -4,6 +4,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useStore } from '../../src/store/useStore';
 import { Screen, Text, Input, Button, Chip } from '@/src/components/ui';
 import { spacing, useColors } from '@/src/theme';
+import { scanReceipt } from '@/src/lib/scanReceipt';
+import { uploadReceiptImage, saveReceiptToSupabase } from '@/src/lib/receipts';
 
 function notify(title: string, message: string) {
   if (Platform.OS === 'web') {
@@ -17,6 +19,7 @@ export default function EditTransactionScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { transactions, updateTransaction, categories, loadCategories } = useStore();
+  const userId = useStore((s) => s.session?.user?.id);
   const c = useColors();
 
   const tx = transactions.find((t) => t.id === id);
@@ -34,6 +37,16 @@ export default function EditTransactionScreen() {
   );
   const [notes, setNotes] = useState(() => tx?.notes ?? '');
   const [saving, setSaving] = useState(false);
+  const [scanning, setScanning] = useState(false);
+
+  // Pending receipt captured via scan; uploaded after a successful save.
+  const [pendingReceipt, setPendingReceipt] = useState<{
+    imageUri: string;
+    text: string;
+    merchant: string | null;
+    amount: number | null;
+    receiptDate: string | null;
+  } | null>(null);
 
   // Keep the selected category valid if its category was deleted/renamed.
   useEffect(() => {
@@ -52,6 +65,49 @@ export default function EditTransactionScreen() {
       </Screen>
     );
   }
+
+  const handleScan = async () => {
+    setScanning(true);
+    try {
+      const result = await scanReceipt('library');
+      if (!result) return;
+
+      const { imageUri, text, ocrAvailable, fields } = result;
+
+      // Build a short summary to drop into the Notes field.
+      const snippet = text.trim().replace(/\s+/g, ' ').slice(0, 120);
+      const summaryParts = [
+        fields.merchant?.trim() || null,
+        snippet || null,
+      ].filter((p): p is string => Boolean(p));
+      const summary = summaryParts.join(' — ');
+
+      if (summary) {
+        setNotes((prev) =>
+          prev.trim() ? `${prev.trim()}\n${summary}` : summary
+        );
+      }
+
+      setPendingReceipt({
+        imageUri,
+        text,
+        merchant: fields.merchant,
+        amount: fields.amount,
+        receiptDate: fields.transactionDate,
+      });
+
+      if (!ocrAvailable) {
+        notify(
+          'Receipt attached',
+          'Auto-extract needs the web app or a dev build. The image will be attached on save — fill in any details manually.'
+        );
+      }
+    } catch (error) {
+      notify('Error', (error as Error).message);
+    } finally {
+      setScanning(false);
+    }
+  };
 
   const handleSave = async () => {
     const parsedAmount = parseFloat(amount);
@@ -76,6 +132,29 @@ export default function EditTransactionScreen() {
       });
 
       if (result) {
+        // Attach the scanned receipt (best-effort; never block the save).
+        if (pendingReceipt && userId) {
+          try {
+            const storagePath = await uploadReceiptImage(
+              userId,
+              pendingReceipt.imageUri
+            );
+            if (storagePath) {
+              await saveReceiptToSupabase(userId, {
+                transactionId: tx.id,
+                storagePath,
+                merchant: pendingReceipt.merchant,
+                total: pendingReceipt.amount,
+                currency: 'SGD',
+                receiptDate:
+                  pendingReceipt.receiptDate ?? new Date(date).toISOString(),
+                rawText: pendingReceipt.text,
+              });
+            }
+          } catch (receiptError) {
+            console.error('Attach receipt failed:', receiptError);
+          }
+        }
         router.back();
       } else {
         notify('Error', 'Failed to update transaction.');
@@ -149,6 +228,21 @@ export default function EditTransactionScreen() {
         containerStyle={styles.field}
       />
 
+      {/* Receipt scan / attach */}
+      <Button
+        title={scanning ? 'Scanning…' : 'Scan / Attach Receipt'}
+        variant="secondary"
+        onPress={handleScan}
+        disabled={scanning || saving}
+        fullWidth
+        style={styles.scanButton}
+      />
+      {pendingReceipt && (
+        <Text variant="caption" color="muted" style={styles.receiptNote}>
+          Receipt attached — saved with this transaction.
+        </Text>
+      )}
+
       {/* Category */}
       <Text variant="label" color="muted" style={styles.label}>
         Category
@@ -208,6 +302,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
+  },
+  scanButton: {
+    marginTop: spacing.lg,
+  },
+  receiptNote: {
+    marginTop: spacing.sm,
   },
   saveButton: {
     marginTop: spacing.xxl,

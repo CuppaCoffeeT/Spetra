@@ -72,7 +72,9 @@ function detectDirection(text: string): 'in' | 'out' {
   return 'out'; // Default to expense
 }
 
-function parseDate(text: string, fallbackDate: string): string {
+// Parse the first recognized date in `text`, or return null if none match.
+// Shared by email parsing (parseDate, with a fallback) and receipt parsing.
+export function parseDateOrNull(text: string): string | null {
   for (const pattern of DATE_PATTERNS) {
     const match = text.match(pattern);
     if (match) {
@@ -99,7 +101,11 @@ function parseDate(text: string, fallbackDate: string): string {
       return date.toISOString();
     }
   }
-  return fallbackDate;
+  return null;
+}
+
+function parseDate(text: string, fallbackDate: string): string {
+  return parseDateOrNull(text) ?? fallbackDate;
 }
 
 function extractDescription(text: string, subject: string): string {
@@ -185,6 +191,76 @@ const ACCOUNT_PATTERNS = [
   { pattern: /card ending (\d{4})/gi, type: 'card' as const, bank: 'UOB' },
   { pattern: /a\/c ending (\d{4})/gi, type: 'account' as const, bank: 'UOB' },
 ];
+
+// --- Receipt OCR field extraction -----------------------------------------
+
+// Matches a decimal money value, optionally currency-prefixed (S$/SGD/$).
+// Capturing group 1 = the numeric part (with optional thousands separators).
+const RECEIPT_DECIMAL = /(?:S\$|SGD|\$)?\s?([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})|[0-9]+\.[0-9]{2})/gi;
+
+function parseMoney(raw: string): number | null {
+  const value = parseFloat(raw.replace(/,/g, ''));
+  return Number.isFinite(value) ? value : null;
+}
+
+// Extract structured fields from raw OCR text of a receipt.
+// - amount: value on the line labelled total/amount/grand total (case-insensitive),
+//   else the largest decimal number anywhere in the text.
+// - transactionDate: reuses the shared email date parser (parseDateOrNull).
+// - merchant: first non-empty line, trimmed and capped at ~40 chars.
+export function extractReceiptFields(text: string): {
+  amount: number | null;
+  transactionDate: string | null;
+  merchant: string | null;
+} {
+  const lines = text.split(/\r?\n/);
+
+  // 1. amount — prefer a value on a labelled total line.
+  let amount: number | null = null;
+  for (const line of lines) {
+    if (/grand\s*total|total|amount/i.test(line)) {
+      const matches = line.match(RECEIPT_DECIMAL);
+      if (matches && matches.length > 0) {
+        // Use the last money value on the label line (the figure usually
+        // follows the label).
+        const candidate = parseMoney(matches[matches.length - 1]);
+        if (candidate !== null) {
+          amount = candidate;
+          break;
+        }
+      }
+    }
+  }
+
+  // Fallback: the largest decimal number found anywhere in the text.
+  if (amount === null) {
+    let max: number | null = null;
+    let match: RegExpExecArray | null;
+    RECEIPT_DECIMAL.lastIndex = 0;
+    while ((match = RECEIPT_DECIMAL.exec(text)) !== null) {
+      const value = parseMoney(match[1]);
+      if (value !== null && (max === null || value > max)) {
+        max = value;
+      }
+    }
+    amount = max;
+  }
+
+  // 2. transactionDate — reuse the shared date parser (no duplication).
+  const transactionDate = parseDateOrNull(text);
+
+  // 3. merchant — first non-empty line, trimmed and capped.
+  let merchant: string | null = null;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.length > 0) {
+      merchant = trimmed.slice(0, 40);
+      break;
+    }
+  }
+
+  return { amount, transactionDate, merchant };
+}
 
 export function extractAccounts(messages: GmailMessage[]): BankAccountInput[] {
   const seen = new Set<string>();
