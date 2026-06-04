@@ -15,6 +15,10 @@ export interface Transaction {
   dedupeHash: string;
   createdAt: string;
   syncedAt: string | null;
+  receiptId?: string | null;
+  notes?: string | null;
+  categoryConfidence?: number | null;
+  edited?: boolean;
 }
 
 export interface TransactionInput {
@@ -63,4 +67,60 @@ export interface BankAccountInput {
   accountType: 'card' | 'account';
   lastFourDigits: string;
   sourceEmail?: string;
+}
+
+export interface Category {
+  id: string;
+  userId: string;
+  name: string;
+  color: string | null;
+  icon: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CategoryInput {
+  name: string;
+  color?: string | null;
+  icon?: string | null;
+  sortOrder?: number;
+}
+
+export interface Budget {
+  id: string;
+  userId: string;
+  categoryId: string | null;
+  month: string;
+  limitAmount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BudgetInput {
+  categoryId?: string | null;
+  month: string;
+  limitAmount: number;
+}
+
+export interface Receipt {
+  id: string;
+  userId: string;
+  transactionId: string | null;
+  storagePath: string;
+  merchant: string | null;
+  total: number | null;
+  currency: string | null;
+  receiptDate: string | null;
+  rawText: string | null;
+}
+
+export interface ReceiptInput {
+  transactionId?: string | null;
+  storagePath: string;
+  merchant?: string | null;
+  total?: number | null;
+  currency?: string | null;
+  receiptDate?: string | null;
+  rawText?: string | null;
 }

@@ -34,13 +34,47 @@ async function initializeSchema(database: SQLite.SQLiteDatabase): Promise<void> 
       source_email TEXT,
       dedupe_hash TEXT UNIQUE,
       created_at TEXT NOT NULL,
-      synced_at TEXT
+      synced_at TEXT,
+      receipt_id TEXT,
+      notes TEXT,
+      category_confidence REAL,
+      edited INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(transaction_date);
     CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id);
     CREATE INDEX IF NOT EXISTS idx_transactions_synced ON transactions(synced_at);
   `);
+
+  await migrateSchema(database);
+}
+
+async function migrateSchema(database: SQLite.SQLiteDatabase): Promise<void> {
+  const result = await database.getFirstAsync<{ user_version: number }>(
+    'PRAGMA user_version'
+  );
+  const version = result?.user_version ?? 0;
+
+  if (version < 1) {
+    // Existing installs predate the wallet/budgeting columns. SQLite lacks
+    // ADD COLUMN IF NOT EXISTS, so guard each ALTER against re-runs.
+    const alters = [
+      'ALTER TABLE transactions ADD COLUMN receipt_id TEXT',
+      'ALTER TABLE transactions ADD COLUMN notes TEXT',
+      'ALTER TABLE transactions ADD COLUMN category_confidence REAL',
+      'ALTER TABLE transactions ADD COLUMN edited INTEGER NOT NULL DEFAULT 0',
+    ];
+
+    for (const sql of alters) {
+      try {
+        await database.execAsync(sql);
+      } catch {
+        // Column already exists (table was created with the new schema).
+      }
+    }
+
+    await database.execAsync('PRAGMA user_version = 1');
+  }
 }
 
 function generateId(): string {
@@ -136,6 +170,10 @@ export async function getTransactions(userId: string): Promise<Transaction[]> {
     dedupe_hash: string;
     created_at: string;
     synced_at: string | null;
+    receipt_id: string | null;
+    notes: string | null;
+    category_confidence: number | null;
+    edited: number;
   }>(
     'SELECT * FROM transactions WHERE user_id = ? ORDER BY transaction_date DESC',
     [userId]
@@ -155,6 +193,10 @@ export async function getTransactions(userId: string): Promise<Transaction[]> {
     dedupeHash: row.dedupe_hash,
     createdAt: row.created_at,
     syncedAt: row.synced_at,
+    receiptId: row.receipt_id,
+    notes: row.notes,
+    categoryConfidence: row.category_confidence,
+    edited: row.edited === 1,
   }));
 }
 
@@ -175,6 +217,10 @@ export async function getUnsyncedTransactions(userId: string): Promise<Transacti
     dedupe_hash: string;
     created_at: string;
     synced_at: string | null;
+    receipt_id: string | null;
+    notes: string | null;
+    category_confidence: number | null;
+    edited: number;
   }>(
     'SELECT * FROM transactions WHERE user_id = ? AND synced_at IS NULL',
     [userId]
@@ -194,6 +240,10 @@ export async function getUnsyncedTransactions(userId: string): Promise<Transacti
     dedupeHash: row.dedupe_hash,
     createdAt: row.created_at,
     syncedAt: row.synced_at,
+    receiptId: row.receipt_id,
+    notes: row.notes,
+    categoryConfidence: row.category_confidence,
+    edited: row.edited === 1,
   }));
 }
 

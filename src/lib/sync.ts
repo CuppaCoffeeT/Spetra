@@ -134,6 +134,10 @@ export async function saveTransactionToSupabase(
     dedupeHash: data.dedupe_hash,
     createdAt: data.created_at,
     syncedAt: data.synced_at,
+    receiptId: data.receipt_id ?? null,
+    notes: data.notes ?? null,
+    categoryConfidence: data.category_confidence ?? null,
+    edited: data.edited ?? false,
   };
 }
 
@@ -305,5 +309,9 @@ export async function getTransactionsFromSupabase(userId: string): Promise<Trans
     dedupeHash: row.dedupe_hash,
     createdAt: row.created_at,
     syncedAt: row.synced_at,
+    receiptId: row.receipt_id ?? null,
+    notes: row.notes ?? null,
+    categoryConfidence: row.category_confidence ?? null,
+    edited: row.edited ?? false,
   }));
 }
