@@ -8,6 +8,7 @@ import {
   Modal,
   ScrollView,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useStore } from '../../src/store/useStore';
 import { Screen, Text, Card, ListRow, Chip, AmountText } from '@/src/components/ui';
 import { spacing, radii, useColors } from '@/src/theme';
@@ -24,6 +25,7 @@ export default function TransactionsScreen() {
   } = useStore();
 
   const c = useColors();
+  const router = useRouter();
 
   const [selectedMonth, setSelectedMonth] = useState<Date | null>(() => {
     const now = new Date();
@@ -71,16 +73,21 @@ export default function TransactionsScreen() {
 
   const renderTransaction = ({ item }: { item: (typeof transactions)[0] }) => (
     <Card style={styles.transactionCard}>
-      <View style={styles.transactionHeader}>
-        <Text variant="heading" numberOfLines={1} style={styles.transactionDesc}>
-          {item.description}
-        </Text>
-        <AmountText
-          amount={item.amount}
-          direction={item.direction === 'out' ? 'out' : 'in'}
-          variant="heading"
-        />
-      </View>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => router.push({ pathname: '/(app)/edit', params: { id: item.id } })}
+      >
+        <View style={styles.transactionHeader}>
+          <Text variant="heading" numberOfLines={1} style={styles.transactionDesc}>
+            {item.description}
+          </Text>
+          <AmountText
+            amount={item.amount}
+            direction={item.direction === 'out' ? 'out' : 'in'}
+            variant="heading"
+          />
+        </View>
+      </TouchableOpacity>
       <View style={styles.transactionMeta}>
         <TouchableOpacity onPress={() => setCategoryModalTxId(item.id)}>
           <View style={[styles.category, { backgroundColor: c.surfaceAlt }]}>

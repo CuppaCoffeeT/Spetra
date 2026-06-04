@@ -66,6 +66,13 @@ export default function AppLayout() {
           title: 'Categories',
         }}
       />
+      <Tabs.Screen
+        name="edit"
+        options={{
+          href: null,
+          title: 'Edit Transaction',
+        }}
+      />
     </Tabs>
   );
 }

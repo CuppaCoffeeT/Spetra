@@ -247,6 +247,66 @@ export async function getUnsyncedTransactions(userId: string): Promise<Transacti
   }));
 }
 
+export async function updateTransactionInDb(
+  id: string,
+  updates: Partial<{
+    amount: number;
+    direction: 'in' | 'out';
+    description: string;
+    category: string;
+    transactionDate: string;
+    notes: string;
+  }>
+): Promise<boolean> {
+  try {
+    const database = await getDatabase();
+
+    const columnMap: Record<string, string> = {
+      amount: 'amount',
+      direction: 'direction',
+      description: 'description',
+      category: 'category',
+      transactionDate: 'transaction_date',
+      notes: 'notes',
+    };
+
+    const setClauses: string[] = [];
+    const params: (string | number)[] = [];
+
+    for (const [key, column] of Object.entries(columnMap)) {
+      const value = (updates as Record<string, unknown>)[key];
+      if (value !== undefined) {
+        setClauses.push(`${column} = ?`);
+        params.push(value as string | number);
+      }
+    }
+
+    // Always mark as edited and unsynced so the next sync pushes the change.
+    // NEVER touch dedupe_hash (PRD R3: freeze it on edit).
+    setClauses.push('edited = 1');
+    setClauses.push('synced_at = NULL');
+
+    if (params.length === 0) {
+      // Nothing to update besides the bookkeeping flags; still run to mark edited.
+      await database.runAsync(
+        `UPDATE transactions SET ${setClauses.join(', ')} WHERE id = ?`,
+        [id]
+      );
+      return true;
+    }
+
+    await database.runAsync(
+      `UPDATE transactions SET ${setClauses.join(', ')} WHERE id = ?`,
+      [...params, id]
+    );
+
+    return true;
+  } catch (error) {
+    console.error('Update transaction in DB failed:', error);
+    return false;
+  }
+}
+
 export async function markAsSynced(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
 

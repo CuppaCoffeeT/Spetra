@@ -13,7 +13,7 @@
 ---
 
 ## 📊 Progress / State  ← executor flips ⬜→🟡→✅; read first
-**Current phase: 3 complete ✅ → ready for Phase 4 (transaction edit) · Blockers: none**
+**Current phase: 4 complete ✅ → ready for Phase 5 (receipt scanner) · Blockers: none**
 
 | Phase | Title | Status | Notes |
 |---|---|---|---|
@@ -21,7 +21,7 @@
 | 1 | Design system (design-first) | ✅ | `src/theme/` tokens (light+dark) + 11 RN primitives + `.design/` brief; refactored all 8 screens onto them, behavior-preserved. tsc 0, no raw hex |
 | 2 | Categories module | ✅ | `src/lib/categories.ts` Supabase-direct CRUD + seed-10-defaults; store slice; new `categories.tsx` mgmt screen + route + settings link; `add`/`transactions` consume dynamic list; Home colour dots. tsc 0 |
 | 3 | Budgeting | ✅ | `src/lib/budgets.ts` (CRUD + spend-math) + store slice; new **Budgets tab** (month selector, per-category caps, ProgressBar, over-budget alerts); Home "This Month's Budgets" summary. tsc 0, money-math verified |
-| 4 | Transaction detail / edit | ⬜ | Full edit screen — enables "edit later to add detail" |
+| 4 | Transaction detail / edit | ✅ | `edit.tsx` (all fields + **notes**), generalized dual-path `updateTransaction` (frozen hash, `edited` flag), `ignoreDuplicates` so re-sync preserves edits; rows from Transactions+Home open it. tsc 0, zero verifier issues |
 | 5 | Receipt scanner (on-device OCR) | ⬜ | ML Kit (native, needs dev build) + Tesseract.js (web) |
 | 6 | Smarter categorization ("NLP") | ⬜ | Keyword scoring + confidence + learns from corrections |
 
@@ -196,6 +196,10 @@ detail / scan a receipt for more detail → user can also add entries manually.
 **Phase 2 notes:** categories are Supabase-only (all platforms); transactions keep denormalized category strings (R6) so rename/delete never rewrites history. `categories.tsx` loads on mount without session-gating (harmless — only reached post-auth).
 
 | 2026-06-04 | 3 | **Budgeting.** `src/lib/budgets.ts` (Supabase-direct CRUD + pure spend-math: `currentMonth`/`monthOf`/`spentByCategory`) + store `budgets` slice (loadBudgets/setBudget/clearBudget). New **Budgets tab** `app/(app)/budgets.tsx`: month selector, summary card, per-category caps with inline set/clear, `ProgressBar` + over-budget labels. Home gains additive "This Month's Budgets" summary. | `tsc` 0 ✅ · spend-math falsification-tested (income excluded, wrong-month excluded, `category_id→name` join — no uuid/name mix) ✅ · over/near/under colour tiers ✅ · Home behaviour additive ✅ |
+
+| 2026-06-04 | 4 | **Transaction detail/edit.** New `app/(app)/edit.tsx` (pre-filled; edits amount/direction/description/category/date + **notes**) + hidden route; Transactions + Home recent rows tap through to it (quick recategorize modal kept). Generalized `updateTransaction` to a dual path: `db.updateTransactionInDb` (native SQLite, `edited=1`, `synced_at=NULL`) / `updateTransactionInSupabase` (web) — **neither writes `dedupe_hash`** (R3 freeze). `saveTransactionsBatchToSupabase` → `ignoreDuplicates:true` so Gmail re-sync never duplicates *or* overwrites edits; `syncToSupabase` still pushes local edits. | `tsc` 0 ✅ · frozen-hash verified (comments only) ✅ · no-clobber-on-resync ✅ · dual-path persistence ✅ · behaviour additive ✅ · **zero verifier issues** |
+
+**Phase 4 notes:** "edit later to add detail" = the `notes` field on the edit screen. Hash frozen on edit; the `edited` flag marks user-touched rows. Delete-transaction intentionally deferred — deleting a Gmail-sourced row then re-syncing would re-import it (needs a tombstone/ignore-list; out of scope).
 
 **Phase 3 notes:** budgets key on `category_id` (uuid) but transactions store category as a **name** string — spend is computed by mapping id→name via the categories store (the bridge is the category object, never a uuid-vs-name compare). Over-budget alerts are **visual** (red bar + "Over by $X"); a local push notification on crossing 100% would need `expo-notifications` + a dev build — deferred as the PRD's optional item.
 

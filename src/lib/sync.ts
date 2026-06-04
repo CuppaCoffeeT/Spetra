@@ -178,7 +178,11 @@ export async function saveTransactionsBatchToSupabase(
 
   const { error, count } = await supabase
     .from('transactions')
-    .upsert(uniqueRows, { onConflict: 'dedupe_hash', count: 'exact' });
+    .upsert(uniqueRows, {
+      onConflict: 'dedupe_hash',
+      ignoreDuplicates: true,
+      count: 'exact',
+    });
 
   if (error) {
     console.error('Batch save to Supabase failed:', error);
@@ -190,12 +194,34 @@ export async function saveTransactionsBatchToSupabase(
 
 export async function updateTransactionInSupabase(
   id: string,
-  updates: { category?: string }
+  updates: Partial<{
+    amount: number;
+    direction: 'in' | 'out';
+    description: string;
+    category: string;
+    transactionDate: string;
+    notes: string;
+  }>
 ): Promise<boolean> {
+  const columnMap: Record<string, string> = {
+    amount: 'amount',
+    direction: 'direction',
+    description: 'description',
+    category: 'category',
+    transactionDate: 'transaction_date',
+    notes: 'notes',
+  };
+
   const updateData: Record<string, unknown> = {};
-  if (updates.category !== undefined) {
-    updateData.category = updates.category;
+  for (const [key, column] of Object.entries(columnMap)) {
+    const value = (updates as Record<string, unknown>)[key];
+    if (value !== undefined) {
+      updateData[column] = value;
+    }
   }
+
+  // Mark as edited; NEVER set dedupe_hash (PRD R3: freeze it on edit).
+  updateData.edited = true;
 
   const { error } = await supabase
     .from('transactions')

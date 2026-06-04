@@ -33,7 +33,17 @@ interface AppState {
   transactionsLoading: boolean;
   loadTransactions: () => Promise<void>;
   addTransaction: (input: TransactionInput) => Promise<Transaction | null>;
-  updateTransaction: (id: string, updates: { category?: string }) => Promise<boolean>;
+  updateTransaction: (
+    id: string,
+    updates: Partial<{
+      amount: number;
+      direction: 'in' | 'out';
+      description: string;
+      category: string;
+      transactionDate: string;
+      notes: string;
+    }>
+  ) => Promise<boolean>;
 
   // Gmail
   gmailState: GmailAuthState;
@@ -179,11 +189,15 @@ export const useStore = create<AppState>()((set, get) => ({
   },
 
   updateTransaction: async (id, updates) => {
-    const success = await sync.updateTransactionInSupabase(id, updates);
+    const success =
+      Platform.OS === 'web'
+        ? await sync.updateTransactionInSupabase(id, updates)
+        : await db.updateTransactionInDb(id, updates);
+
     if (success) {
       set((state) => ({
         transactions: state.transactions.map((t) =>
-          t.id === id ? { ...t, ...updates } : t
+          t.id === id ? { ...t, ...updates, edited: true } : t
         ),
       }));
     }

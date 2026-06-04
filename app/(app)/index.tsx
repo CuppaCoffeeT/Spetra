@@ -216,6 +216,7 @@ export default function HomeScreen() {
               title={t.description}
               subtitle={new Date(t.transactionDate).toLocaleDateString()}
               right={<AmountText amount={t.amount} direction={t.direction} />}
+              onPress={() => router.push({ pathname: '/(app)/edit', params: { id: t.id } })}
             />
           ))}
           {transactions.length === 0 && (
