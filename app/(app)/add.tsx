@@ -1,8 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, StyleSheet, Platform, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useStore } from '../../src/store/useStore';
-import { CATEGORIES } from '../../src/services/categorizer';
 import { Screen, Text, Input, Button, Chip } from '@/src/components/ui';
 import { spacing, useColors } from '@/src/theme';
 
@@ -16,8 +15,12 @@ function notify(title: string, message: string) {
 
 export default function AddTransactionScreen() {
   const router = useRouter();
-  const { addTransaction } = useStore();
+  const { addTransaction, categories, loadCategories } = useStore();
   const c = useColors();
+
+  useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
 
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -25,6 +28,13 @@ export default function AddTransactionScreen() {
   const [direction, setDirection] = useState<'out' | 'in'>('out');
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [saving, setSaving] = useState(false);
+
+  // Keep the selected category valid if its category was deleted/renamed.
+  useEffect(() => {
+    if (categories.length > 0 && !categories.some((cat) => cat.name === category)) {
+      setCategory(categories[0].name);
+    }
+  }, [categories, category]);
 
   const handleSave = async () => {
     const parsedAmount = parseFloat(amount);
@@ -118,12 +128,13 @@ export default function AddTransactionScreen() {
         Category
       </Text>
       <View style={styles.categoryGrid}>
-        {CATEGORIES.map((cat) => (
+        {categories.map((cat) => (
           <Chip
-            key={cat}
-            label={cat}
-            selected={category === cat}
-            onPress={() => setCategory(cat)}
+            key={cat.id}
+            label={cat.name}
+            selected={category === cat.name}
+            selectedColor={cat.color ?? undefined}
+            onPress={() => setCategory(cat.name)}
           />
         ))}
       </View>

@@ -9,13 +9,19 @@ import {
   ScrollView,
 } from 'react-native';
 import { useStore } from '../../src/store/useStore';
-import { CATEGORIES } from '../../src/services/categorizer';
 import { Screen, Text, Card, ListRow, Chip, AmountText } from '@/src/components/ui';
 import { spacing, radii, useColors } from '@/src/theme';
 
 export default function TransactionsScreen() {
-  const { transactions, transactionsLoading, loadTransactions, updateTransaction, session } =
-    useStore();
+  const {
+    transactions,
+    transactionsLoading,
+    loadTransactions,
+    updateTransaction,
+    session,
+    categories,
+    loadCategories,
+  } = useStore();
 
   const c = useColors();
 
@@ -28,8 +34,9 @@ export default function TransactionsScreen() {
   useEffect(() => {
     if (session) {
       loadTransactions();
+      loadCategories();
     }
-  }, [session, loadTransactions]);
+  }, [session, loadTransactions, loadCategories]);
 
   // Generate month options from transactions
   const months = useMemo(() => {
@@ -167,11 +174,18 @@ export default function TransactionsScreen() {
             <Text variant="heading" style={styles.modalTitle}>
               Select Category
             </Text>
-            {CATEGORIES.map((cat) => (
+            {categories.map((cat) => (
               <ListRow
-                key={cat}
-                title={cat}
-                onPress={() => categoryModalTxId && handleCategoryChange(categoryModalTxId, cat)}
+                key={cat.id}
+                title={cat.name}
+                left={
+                  <View
+                    style={[styles.colorDot, { backgroundColor: cat.color ?? c.border }]}
+                  />
+                }
+                onPress={() =>
+                  categoryModalTxId && handleCategoryChange(categoryModalTxId, cat.name)
+                }
               />
             ))}
           </View>
@@ -245,5 +259,10 @@ const styles = StyleSheet.create({
   modalTitle: {
     marginBottom: spacing.lg,
     textAlign: 'center',
+  },
+  colorDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
   },
 });

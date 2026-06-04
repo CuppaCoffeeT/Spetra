@@ -50,6 +50,13 @@ export default function AppLayout() {
           href: null,
         }}
       />
+      <Tabs.Screen
+        name="categories"
+        options={{
+          href: null,
+          title: 'Categories',
+        }}
+      />
     </Tabs>
   );
 }

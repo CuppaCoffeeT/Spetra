@@ -1,15 +1,22 @@
-export const CATEGORIES = [
-  'Transport',
-  'Groceries',
-  'Shopping',
-  'Food',
-  'Bills',
-  'Income',
-  'Transfer',
-  'Healthcare',
-  'Entertainment',
-  'Other',
+// Default category set (name + identity colour). These are DATA used for
+// seeding the per-user `categories` table; hex values are allowed here.
+// sort_order is derived from the array index.
+export const DEFAULT_CATEGORIES: { name: string; color: string }[] = [
+  { name: 'Transport', color: '#0EA5E9' },
+  { name: 'Groceries', color: '#16A34A' },
+  { name: 'Shopping', color: '#EC4899' },
+  { name: 'Food', color: '#F59E0B' },
+  { name: 'Bills', color: '#6366F1' },
+  { name: 'Income', color: '#10B981' },
+  { name: 'Transfer', color: '#64748B' },
+  { name: 'Healthcare', color: '#EF4444' },
+  { name: 'Entertainment', color: '#8B5CF6' },
+  { name: 'Other', color: '#94A3B8' },
 ];
+
+// Names only — derived from DEFAULT_CATEGORIES so the source of truth stays in
+// one place. Kept as a string[] for existing consumers.
+export const CATEGORIES: string[] = DEFAULT_CATEGORIES.map((c) => c.name);
 
 const rules: Array<{ pattern: RegExp; category: string }> = [
   // Transport

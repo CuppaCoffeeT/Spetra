@@ -13,13 +13,13 @@
 ---
 
 ## 📊 Progress / State  ← executor flips ⬜→🟡→✅; read first
-**Current phase: 1 complete ✅ → ready for Phase 2 (categories) · Blockers: none**
+**Current phase: 2 complete ✅ → ready for Phase 3 (budgeting) · Blockers: none**
 
 | Phase | Title | Status | Notes |
 |---|---|---|---|
 | 0 | Foundations & schema | ✅ | Migrations applied to prod 2026-06-04; SQLite schema + TS types tsc-green. Reconciled 2 pre-existing empty stub tables (categories, budgets) + fixed FK types to uuid |
 | 1 | Design system (design-first) | ✅ | `src/theme/` tokens (light+dark) + 11 RN primitives + `.design/` brief; refactored all 8 screens onto them, behavior-preserved. tsc 0, no raw hex |
-| 2 | Categories module | ⬜ | Replace hardcoded `CATEGORIES` with editable table |
+| 2 | Categories module | ✅ | `src/lib/categories.ts` Supabase-direct CRUD + seed-10-defaults; store slice; new `categories.tsx` mgmt screen + route + settings link; `add`/`transactions` consume dynamic list; Home colour dots. tsc 0 |
 | 3 | Budgeting | ⬜ | Per-category monthly caps + progress + alerts |
 | 4 | Transaction detail / edit | ⬜ | Full edit screen — enables "edit later to add detail" |
 | 5 | Receipt scanner (on-device OCR) | ⬜ | ML Kit (native, needs dev build) + Tesseract.js (web) |
@@ -190,6 +190,10 @@ detail / scan a receipt for more detail → user can also add entries manually.
 | 2026-06-04 | 0 | **Applied to prod** via Dashboard SQL Editor (project `fpasfffeywotrclprcai`). Discovered + reconciled 2 pre-existing **empty** stub tables: dropped `categories` (minimal) + `budgets` (incompatible `name/period/currency/amount/starts_on` design), recreated to PRD schema. Fixed FK type bug: `transactions.id` is **uuid** (not text) → corrected `receipts.transaction_id` + baseline `transactions.id` to `uuid`. | Applied clean ✅ · all FKs uuid↔uuid ✅ · `tsc` 0 ✅ |
 | 2026-06-04 | — | **Base reconciliation**: the worktree had branched from the last commit (`a963f64`), which predated large uncommitted WIP in main (multi-account Gmail, bank accounts, `accounts`/`add` screens, batch sync). Committed that WIP as checkpoint `295a98c`, rebased Phase 0 onto it (resolved one `types/index.ts` conflict — kept both BankAccount + Category/Budget/Receipt; `sync.ts`/`db.ts` auto-merged preserving both batch/bank fns + Phase 0 read-mappings). | `tsc` 0 ✅ · Phase 0 changes verified intact post-rebase ✅ |
 | 2026-06-04 | 1 | **Design system.** `src/theme/` ("quiet ledger" tokens: light+dark palette, spacing/radii/typography/shadow) + `.design/design-brief.md`. 11 RN primitives in `src/components/ui/` (Screen, Text, Card, Button, Input, Chip, ProgressBar, ListRow, AmountText, SectionHeader, FAB) + barrel. Refactored all 8 screens (`index`, `transactions`, `accounts`, `settings`, `add`, `login`, both `_layout`s) onto primitives+tokens. Added `Chip.selectedColor` to restore Expense/Income red-green. Built via primitives→screens→adversarial-verify workflow (12 agents). | `tsc --noEmit` 0 ✅ · no raw hex in `ui/`+`app/` ✅ · per-screen `git diff` behaviour-preservation audit passed (handlers/store/router/validation unchanged) ✅ · 11 primitives + barrel ✅ |
+
+| 2026-06-04 | 2 | **Categories module.** `src/lib/categories.ts` (Supabase-direct CRUD + `seedDefaultCategories` upsert onConflict user_id,name); store `categories` slice (loadCategories seeds only when empty); `categorizer.ts` decoupled — `DEFAULT_CATEGORIES {name,color}` single source, `CATEGORIES` derived, `categorize()` byte-unchanged. New `app/(app)/categories.tsx` mgmt screen (add/edit/delete/recolour) + hidden route + settings link. `add.tsx`/`transactions.tsx` render from store (dropped const); Home shows category colour dots. Guard added so a deleted selected-category falls back gracefully. | `tsc` 0 ✅ · seed idempotent ✅ · consumers dynamic ✅ · behaviour-preservation diff audit passed ✅ |
+
+**Phase 2 notes:** categories are Supabase-only (all platforms); transactions keep denormalized category strings (R6) so rename/delete never rewrites history. `categories.tsx` loads on mount without session-gating (harmless — only reached post-auth).
 
 **Phase 1 notes (for later phases):**
 - New palette is a deliberate refresh: ink-black primary + single indigo accent (was blue). Vibe is token-driven — tune `src/theme/tokens.ts` to adjust globally.

@@ -4,7 +4,15 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import * as db from '../lib/db';
 import * as sync from '../lib/sync';
-import type { Transaction, TransactionInput, GmailAuthState, BankAccount } from '../types';
+import * as categoriesLib from '../lib/categories';
+import type {
+  Transaction,
+  TransactionInput,
+  GmailAuthState,
+  BankAccount,
+  Category,
+  CategoryInput,
+} from '../types';
 import { gmailService } from '../services/gmail';
 import { parseEmails, extractAccounts } from '../services/parser';
 import Constants from 'expo-constants';
@@ -39,6 +47,14 @@ interface AppState {
   loadBankAccounts: () => Promise<void>;
   detectBankAccounts: () => Promise<number>;
   updateBankAccountLabel: (id: string, label: string) => Promise<void>;
+
+  // Categories
+  categories: Category[];
+  categoriesLoading: boolean;
+  loadCategories: () => Promise<void>;
+  addCategory: (input: CategoryInput) => Promise<Category | null>;
+  updateCategory: (id: string, updates: Partial<CategoryInput>) => Promise<boolean>;
+  deleteCategory: (id: string) => Promise<boolean>;
 
   // Sync
   syncLoading: boolean;
@@ -288,6 +304,69 @@ export const useStore = create<AppState>()((set, get) => ({
         ),
       }));
     }
+  },
+
+  // Categories state
+  categories: [],
+  categoriesLoading: false,
+
+  loadCategories: async () => {
+    const userId = get().session?.user?.id;
+    if (!userId) return;
+
+    set({ categoriesLoading: true });
+    try {
+      let categories = await categoriesLib.getCategoriesFromSupabase(userId);
+      if (categories.length === 0) {
+        categories = await categoriesLib.seedDefaultCategories(userId);
+      }
+      set({ categories, categoriesLoading: false });
+    } catch (error) {
+      console.error('Load categories failed:', error);
+      set({ categoriesLoading: false });
+    }
+  },
+
+  addCategory: async (input) => {
+    const userId = get().session?.user?.id;
+    if (!userId) return null;
+
+    try {
+      const category = await categoriesLib.saveCategoryToSupabase(userId, input);
+      if (category) {
+        set((state) => ({
+          categories: [...state.categories, category].sort(
+            (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)
+          ),
+        }));
+      }
+      return category;
+    } catch (error) {
+      console.error('Add category failed:', error);
+      return null;
+    }
+  },
+
+  updateCategory: async (id, updates) => {
+    const success = await categoriesLib.updateCategoryInSupabase(id, updates);
+    if (success) {
+      set((state) => ({
+        categories: state.categories
+          .map((c) => (c.id === id ? { ...c, ...updates } : c))
+          .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)),
+      }));
+    }
+    return success;
+  },
+
+  deleteCategory: async (id) => {
+    const success = await categoriesLib.deleteCategoryFromSupabase(id);
+    if (success) {
+      set((state) => ({
+        categories: state.categories.filter((c) => c.id !== id),
+      }));
+    }
+    return success;
   },
 
   // Sync state

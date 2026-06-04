@@ -1,4 +1,5 @@
 import { View, StyleSheet, TouchableOpacity, Alert, Platform } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useStore } from '../../src/store/useStore';
 import type { GmailAccount } from '../../src/types';
 import { Screen, Card, SectionHeader, ListRow, Button, Text } from '@/src/components/ui';
@@ -40,6 +41,7 @@ export default function SettingsScreen() {
   } = useStore();
 
   const c = useColors();
+  const router = useRouter();
 
   const hasAccounts = gmailState.accounts.length > 0;
 
@@ -133,6 +135,17 @@ export default function SettingsScreen() {
               />
             </>
           )}
+        </Card>
+      </View>
+
+      <View style={styles.section}>
+        <SectionHeader title="Categories" />
+        <Card>
+          <Button
+            title="Manage Categories"
+            variant="secondary"
+            onPress={() => router.push('/(app)/categories')}
+          />
         </Card>
       </View>
 

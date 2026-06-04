@@ -6,15 +6,23 @@ import { Screen, Card, SectionHeader, ListRow, AmountText, FAB, Text } from '@/s
 import { spacing, useColors } from '@/src/theme';
 
 export default function HomeScreen() {
-  const { transactions, transactionsLoading, loadTransactions, session } = useStore();
+  const { transactions, transactionsLoading, loadTransactions, session, categories, loadCategories } =
+    useStore();
   const router = useRouter();
   const c = useColors();
 
   useEffect(() => {
     if (session) {
       loadTransactions();
+      loadCategories();
     }
-  }, [session, loadTransactions]);
+  }, [session, loadTransactions, loadCategories]);
+
+  // Map category name -> color for the colour dots in Top Categories.
+  const categoryColors = categories.reduce((acc, cat) => {
+    if (cat.color) acc[cat.name] = cat.color;
+    return acc;
+  }, {} as Record<string, string>);
 
   // Calculate monthly summary
   const now = new Date();
@@ -100,6 +108,14 @@ export default function HomeScreen() {
               <ListRow
                 key={category}
                 title={category}
+                left={
+                  <View
+                    style={[
+                      styles.categoryDot,
+                      { backgroundColor: categoryColors[category] ?? c.textMuted },
+                    ]}
+                  />
+                }
                 right={<AmountText amount={amount} showSign={false} style={{ color: c.textSecondary }} />}
               />
             ))
@@ -166,5 +182,10 @@ const styles = StyleSheet.create({
   emptyText: {
     textAlign: 'center',
     paddingVertical: spacing.lg,
+  },
+  categoryDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
 });
