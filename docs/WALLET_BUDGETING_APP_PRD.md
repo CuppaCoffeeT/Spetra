@@ -13,11 +13,11 @@
 ---
 
 ## 📊 Progress / State  ← executor flips ⬜→🟡→✅; read first
-**Current phase: 0 (code complete — prod migration apply pending user) · Blockers: applying DDL to prod Supabase needs user creds (no MCP in session)**
+**Current phase: 0 complete ✅ → ready for Phase 1 (design system) · Blockers: none**
 
 | Phase | Title | Status | Notes |
 |---|---|---|---|
-| 0 | Foundations & schema | 🟡 | Migrations + SQLite schema + TS types built & tsc-green; **migrations not yet applied to prod DB** (no Supabase MCP/creds) |
+| 0 | Foundations & schema | ✅ | Migrations applied to prod 2026-06-04; SQLite schema + TS types tsc-green. Reconciled 2 pre-existing empty stub tables (categories, budgets) + fixed FK types to uuid |
 | 1 | Design system (design-first) | ⬜ | designer-skills → tokens + RN primitives → refactor 5 screens |
 | 2 | Categories module | ⬜ | Replace hardcoded `CATEGORIES` with editable table |
 | 3 | Budgeting | ⬜ | Per-category monthly caps + progress + alerts |
@@ -186,11 +186,11 @@ detail / scan a receipt for more detail → user can also add entries manually.
 ## 🗒️ Execution Log  *(executor appends one dated row per phase)*
 | Date | Phase | What shipped | Gate result |
 |---|---|---|---|
-| 2026-06-04 | 0 | 7 idempotent migrations (`bank_accounts` baseline, `transactions` baseline, `categories`, `budgets`, `receipts`, `extend_transactions`, `receipts` storage bucket+policies); `db.ts` SQLite schema + `PRAGMA user_version` migration for existing installs; `Transaction` extended + `Category`/`Budget`/`Receipt` types; `sync.ts` read mappings. Built via parallel-implement + adversarial-verify workflow. | `tsc --noEmit` 0 errors ✅ · column parity SQLite⇄Supabase⇄TS ✅ · RLS+owner policy on every table ✅ · idempotent+FK-ordered ✅ · **prod apply ⏸ pending user (no MCP/creds)** |
+| 2026-06-04 | 0 | 7 idempotent migrations (`bank_accounts` baseline, `transactions` baseline, `categories`, `budgets`, `receipts`, `extend_transactions`, `receipts` storage bucket+policies); `db.ts` SQLite schema + `PRAGMA user_version` migration for existing installs; `Transaction` extended + `Category`/`Budget`/`Receipt` types; `sync.ts` read mappings. Built via parallel-implement + adversarial-verify workflow. | `tsc --noEmit` 0 errors ✅ · column parity SQLite⇄Supabase⇄TS ✅ · RLS+owner policy on every table ✅ · idempotent+FK-ordered ✅ |
+| 2026-06-04 | 0 | **Applied to prod** via Dashboard SQL Editor (project `fpasfffeywotrclprcai`). Discovered + reconciled 2 pre-existing **empty** stub tables: dropped `categories` (minimal) + `budgets` (incompatible `name/period/currency/amount/starts_on` design), recreated to PRD schema. Fixed FK type bug: `transactions.id` is **uuid** (not text) → corrected `receipts.transaction_id` + baseline `transactions.id` to `uuid`. | Applied clean ✅ · all FKs uuid↔uuid ✅ · `tsc` 0 ✅ |
 
-### Phase 0 — applying migrations to prod (USER STEP)
-Migrations live in `supabase/migrations/` and are idempotent (safe to re-run against the existing prod DB). To apply, either:
-- **Dashboard**: paste each file (in filename order) into Supabase SQL Editor and run; or
-- **CLI**: `supabase link --project-ref fpasfffeywotrclprcai` then `supabase db push` (needs the DB password / access token).
-
-Data-path decision (PRD R2) is now implemented: `transactions` dual (SQLite native + Supabase); `categories`/`budgets`/`receipts` Supabase-only; receipt images → Storage bucket `receipts` (private, owner-scoped).
+**Phase 0 reality notes (for Phase 2/3):**
+- Pre-existing empty stubs `categories` + `budgets` were dropped & rebuilt — the app code never used them (categorizer uses a hardcoded const; no budget feature). Phase 2/3 build on the new schema.
+- `transactions.id` / all PK ids are **uuid**; SQLite native side keeps `id TEXT` (native generates valid-uuid strings — compatible).
+- Data-path (PRD R2) implemented: `transactions` dual (SQLite+Supabase); `categories`/`budgets`/`receipts` Supabase-only; receipt images → Storage bucket `receipts` (private, owner-scoped).
+- One-time reconcile lives in `supabase/apply_phase0.sql` (uncommitted helper, contains the stub drops); the committed `supabase/migrations/*.sql` are the canonical fresh-DB set.

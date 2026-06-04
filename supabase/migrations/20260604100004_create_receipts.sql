@@ -1,11 +1,11 @@
 -- wallet prd phase 0: `receipts` table (supabase-only)
 -- receipt images live in supabase storage (bucket 'receipts'); this row holds
--- metadata + ocr text. transaction_id is text to match transactions.id (text).
+-- metadata + ocr text. transaction_id is uuid to match transactions.id (uuid).
 
 create table if not exists public.receipts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id),
-  transaction_id text references public.transactions(id) on delete set null,
+  transaction_id uuid references public.transactions(id) on delete set null,
   storage_path text not null,
   merchant text,
   total numeric,

@@ -4,7 +4,7 @@
 -- (sqlite on native + supabase); this is the canonical supabase shape.
 
 create table if not exists public.transactions (
-  id text primary key,
+  id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id),
   amount numeric not null,
   currency text not null default 'SGD',
