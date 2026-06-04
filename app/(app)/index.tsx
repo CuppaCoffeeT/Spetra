@@ -2,12 +2,30 @@ import { useEffect } from 'react';
 import { View, StyleSheet, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useStore } from '../../src/store/useStore';
-import { Screen, Card, SectionHeader, ListRow, AmountText, FAB, Text } from '@/src/components/ui';
+import {
+  Screen,
+  Card,
+  SectionHeader,
+  ListRow,
+  AmountText,
+  ProgressBar,
+  FAB,
+  Text,
+} from '@/src/components/ui';
 import { spacing, useColors } from '@/src/theme';
+import { currentMonth as getCurrentMonth, spentByCategory } from '@/src/lib/budgets';
 
 export default function HomeScreen() {
-  const { transactions, transactionsLoading, loadTransactions, session, categories, loadCategories } =
-    useStore();
+  const {
+    transactions,
+    transactionsLoading,
+    loadTransactions,
+    session,
+    categories,
+    loadCategories,
+    budgets,
+    loadBudgets,
+  } = useStore();
   const router = useRouter();
   const c = useColors();
 
@@ -15,8 +33,9 @@ export default function HomeScreen() {
     if (session) {
       loadTransactions();
       loadCategories();
+      loadBudgets();
     }
-  }, [session, loadTransactions, loadCategories]);
+  }, [session, loadTransactions, loadCategories, loadBudgets]);
 
   // Map category name -> color for the colour dots in Top Categories.
   const categoryColors = categories.reduce((acc, cat) => {
@@ -53,6 +72,27 @@ export default function HomeScreen() {
   const sortedCategories = Object.entries(categoryTotals)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 5);
+
+  // Budget summary for the current month: pair each budget that belongs to this
+  // month with its category (to resolve the denormalized category NAME used by
+  // transactions), then compute spend BY CATEGORY NAME.
+  const month = getCurrentMonth();
+  const spentThisMonth = spentByCategory(transactions, month);
+  const monthBudgets = budgets
+    .filter((b) => b.month === month)
+    .map((b) => {
+      const category = b.categoryId
+        ? categories.find((cat) => cat.id === b.categoryId)
+        : undefined;
+      const name = category?.name ?? 'Uncategorized';
+      const spent = spentThisMonth[name] ?? 0;
+      const limit = b.limitAmount;
+      const pct = limit > 0 ? spent / limit : 0;
+      const over = limit > 0 && spent > limit;
+      const near = limit > 0 && pct >= 0.8 && !over;
+      return { id: b.id, name, color: category?.color ?? null, spent, limit, pct, over, near };
+    })
+    .sort((a, b) => b.pct - a.pct);
 
   return (
     <View style={styles.wrapper}>
@@ -96,6 +136,52 @@ export default function HomeScreen() {
             />
           </View>
         </Card>
+
+        <View style={styles.section}>
+          <SectionHeader
+            title="This Month's Budgets"
+            action={{ label: 'See all', onPress: () => router.push('/(app)/budgets') }}
+          />
+          {monthBudgets.length === 0 ? (
+            <Text variant="body" color="muted" style={styles.emptyText}>
+              No budgets yet — set one in the Budgets tab
+            </Text>
+          ) : (
+            monthBudgets.map((b) => (
+              <View key={b.id} style={styles.budgetRow}>
+                <View style={styles.budgetTop}>
+                  <View style={styles.budgetName}>
+                    <View
+                      style={[
+                        styles.categoryDot,
+                        { backgroundColor: b.color ?? c.textMuted },
+                      ]}
+                    />
+                    <Text variant="body" numberOfLines={1}>
+                      {b.name}
+                    </Text>
+                  </View>
+                  <View style={styles.budgetAmounts}>
+                    <AmountText
+                      amount={b.spent}
+                      showSign={false}
+                      style={{ color: b.over ? c.expense : c.textPrimary }}
+                    />
+                    <Text variant="body" color="muted">
+                      {' / '}
+                    </Text>
+                    <AmountText amount={b.limit} showSign={false} style={{ color: c.textSecondary }} />
+                  </View>
+                </View>
+                <ProgressBar
+                  value={Math.min(b.pct, 1)}
+                  color={b.over ? c.expense : b.near ? c.warning : c.accent}
+                  style={styles.budgetBar}
+                />
+              </View>
+            ))
+          )}
+        </View>
 
         <View style={styles.section}>
           <SectionHeader title="Top Categories" />
@@ -187,5 +273,28 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
+  },
+  budgetRow: {
+    paddingVertical: spacing.sm,
+  },
+  budgetTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  budgetName: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexShrink: 1,
+  },
+  budgetAmounts: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: spacing.sm,
+  },
+  budgetBar: {
+    height: 6,
   },
 });

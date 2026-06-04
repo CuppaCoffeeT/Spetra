@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import * as db from '../lib/db';
 import * as sync from '../lib/sync';
 import * as categoriesLib from '../lib/categories';
+import * as budgetsLib from '../lib/budgets';
 import type {
   Transaction,
   TransactionInput,
@@ -12,6 +13,7 @@ import type {
   BankAccount,
   Category,
   CategoryInput,
+  Budget,
 } from '../types';
 import { gmailService } from '../services/gmail';
 import { parseEmails, extractAccounts } from '../services/parser';
@@ -55,6 +57,13 @@ interface AppState {
   addCategory: (input: CategoryInput) => Promise<Category | null>;
   updateCategory: (id: string, updates: Partial<CategoryInput>) => Promise<boolean>;
   deleteCategory: (id: string) => Promise<boolean>;
+
+  // Budgets
+  budgets: Budget[];
+  budgetsLoading: boolean;
+  loadBudgets: () => Promise<void>;
+  setBudget: (categoryId: string, month: string, limitAmount: number) => Promise<Budget | null>;
+  clearBudget: (id: string) => Promise<boolean>;
 
   // Sync
   syncLoading: boolean;
@@ -364,6 +373,59 @@ export const useStore = create<AppState>()((set, get) => ({
     if (success) {
       set((state) => ({
         categories: state.categories.filter((c) => c.id !== id),
+      }));
+    }
+    return success;
+  },
+
+  // Budgets state
+  budgets: [],
+  budgetsLoading: false,
+
+  loadBudgets: async () => {
+    const userId = get().session?.user?.id;
+    if (!userId) return;
+
+    set({ budgetsLoading: true });
+    try {
+      const budgets = await budgetsLib.getBudgetsFromSupabase(userId);
+      set({ budgets, budgetsLoading: false });
+    } catch (error) {
+      console.error('Load budgets failed:', error);
+      set({ budgetsLoading: false });
+    }
+  },
+
+  setBudget: async (categoryId, month, limitAmount) => {
+    const userId = get().session?.user?.id;
+    if (!userId) return null;
+
+    try {
+      const budget = await budgetsLib.upsertBudgetToSupabase(userId, {
+        categoryId,
+        month,
+        limitAmount,
+      });
+      if (budget) {
+        set((state) => {
+          const others = state.budgets.filter(
+            (b) => !(b.categoryId === budget.categoryId && b.month === budget.month)
+          );
+          return { budgets: [...others, budget] };
+        });
+      }
+      return budget;
+    } catch (error) {
+      console.error('Set budget failed:', error);
+      return null;
+    }
+  },
+
+  clearBudget: async (id) => {
+    const success = await budgetsLib.deleteBudgetFromSupabase(id);
+    if (success) {
+      set((state) => ({
+        budgets: state.budgets.filter((b) => b.id !== id),
       }));
     }
     return success;
