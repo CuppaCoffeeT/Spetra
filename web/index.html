@@ -6,6 +6,19 @@
     <meta name="theme-color" content="#F6F4EF" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)" />
     <title>Spend Tracker — Web</title>
+    <!-- Pre-paint theme apply: mirrors useTheme.ts (localStorage 'theme':
+         'dark' explicit, or anything but 'light' + system dark preference)
+         so returning dark-mode users get no paper flash before the bundle
+         loads. useTheme's own apply() is idempotent and takes over after. -->
+    <script>
+      try {
+        var t = localStorage.getItem('theme');
+        document.documentElement.classList.toggle(
+          'dark',
+          t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+        );
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

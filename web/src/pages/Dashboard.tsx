@@ -9,10 +9,12 @@ import {
   monthOf,
   spentByCategory,
   formatMoney,
+  formatDate,
 } from '../lib/api';
 import { useLiveTransactions } from '../lib/realtime';
 import type { Budget, Category, Transaction } from '../lib/types';
-import { AmountText, Button, Card, ColorDot, PageTitle, ProgressBar, Spinner } from '../components/ui';
+import { AmountText, Badge, Button, Card, ColorDot, PageTitle, ProgressBar, Spinner } from '../components/ui';
+import { ChevronRight } from '../components/Icons';
 
 function StatLabel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
@@ -45,12 +47,22 @@ function Hero({
       className={`font-semibold tracking-[-0.02em] [font-variant-numeric:tabular-nums] ${
         alarm ? 'text-expense' : 'text-textPrimary'
       } ${size}`}
-    ><span className={`text-[0.6em] ${sub}`}>{symbol}</span>{whole}<span className={`text-[0.6em] ${sub}`}>{cents}</span></span>
+    >{amount < 0 && '−'}<span className={`text-[0.6em] ${sub}`}>{symbol}</span>{whole}<span className={`text-[0.6em] ${sub}`}>{cents}</span></span>
   );
 }
 
+// Single 'See all' treatment for every card header — 11px caps per spec §2, with
+// p-2/-m-2 hit-slop lifting the touch target toward 44px without extra visual weight.
+const seeAllCls =
+  'text-[11px] font-medium uppercase tracking-[0.08em] text-accent p-2 -m-2 rounded-lg focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent';
+
 const rowLinkCls =
-  'flex items-center justify-between gap-3 border-b border-border py-3 text-sm transition-colors duration-[160ms] ease-house last:border-0 hover:bg-surfaceAlt/50 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent';
+  'flex items-center justify-between gap-3 border-b border-border py-3 text-sm transition-colors duration-[160ms] ease-house last:border-0 hover:bg-surfaceAlt/50 active:bg-surfaceAlt focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent';
+
+// Quiet tappability cue for deep-link rows on touch — hidden at md+ where hover carries it.
+function RowChevron() {
+  return <ChevronRight size={16} className="shrink-0 text-textMuted md:hidden" />;
+}
 
 export default function Dashboard({ userId }: { userId: string }) {
   const navigate = useNavigate();
@@ -163,6 +175,7 @@ export default function Dashboard({ userId }: { userId: string }) {
           <StatLabel>Net — {monthLabel}</StatLabel>
           <p className="mt-2">
             <Hero amount={net} alarm={net < 0} />
+            {net < 0 && <span className="ml-2 text-xs text-textSecondary">overspent</span>}
           </p>
         </Card>
       </div>
@@ -185,6 +198,7 @@ export default function Dashboard({ userId }: { userId: string }) {
             <StatLabel>Net</StatLabel>
             <p className="mt-1">
               <Hero amount={net} size="text-xl" alarm={net < 0} />
+              {net < 0 && <span className="ml-1.5 text-xs text-textSecondary">overspent</span>}
             </p>
           </div>
         </div>
@@ -194,7 +208,7 @@ export default function Dashboard({ userId }: { userId: string }) {
         <Card>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="font-medium">This Month's Budgets</h2>
-            <Link to="/budgets" className="text-sm text-accent">
+            <Link to="/budgets" className={seeAllCls}>
               See all
             </Link>
           </div>
@@ -236,8 +250,11 @@ export default function Dashboard({ userId }: { userId: string }) {
                     <ColorDot color={colorOf[name] ?? null} />
                     {name}
                   </span>
-                  <span className="shrink-0 text-textSecondary [font-variant-numeric:tabular-nums]">
-                    {formatMoney(amt)}
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="text-textSecondary [font-variant-numeric:tabular-nums]">
+                      {formatMoney(amt)}
+                    </span>
+                    <RowChevron />
                   </span>
                 </Link>
               ))}
@@ -249,10 +266,7 @@ export default function Dashboard({ userId }: { userId: string }) {
       <Card className="mt-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-medium">Recent Transactions</h2>
-          <Link
-            to="/transactions"
-            className="text-[12px] font-medium uppercase tracking-[0.08em] text-accent focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent"
-          >
+          <Link to="/transactions" className={seeAllCls}>
             See all
           </Link>
         </div>
@@ -261,17 +275,18 @@ export default function Dashboard({ userId }: { userId: string }) {
             <Link key={t.id} to={`/transactions?open=${t.id}`} className={rowLinkCls}>
               <span className="flex min-w-0 items-center gap-2">
                 <ColorDot color={colorOf[t.category ?? ''] ?? null} />
-                {t.needsReview && (
-                  <span aria-hidden="true" className="h-[5px] w-[5px] shrink-0 rounded-full bg-warning" />
-                )}
                 <span className="min-w-0">
                   {t.description}
                   <span className="ml-2 text-xs text-textSecondary">
-                    {new Date(t.transactionDate).toLocaleDateString()}
+                    {formatDate(t.transactionDate)}
                   </span>
                 </span>
+                {t.needsReview && <Badge tone="warning">review</Badge>}
               </span>
-              <AmountText amount={t.amount} direction={t.direction} currency={t.currency} className="shrink-0" />
+              <span className="flex shrink-0 items-center gap-2">
+                <AmountText amount={t.amount} direction={t.direction} currency={t.currency} />
+                <RowChevron />
+              </span>
             </Link>
           ))}
         </div>

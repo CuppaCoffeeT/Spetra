@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { formatMoney } from '../lib/api';
 import type { Category, ItemDraft } from '../lib/types';
 import { X } from './Icons';
@@ -48,6 +49,11 @@ export default function ItemsEditor({
   onUseTotal?: (sum: number) => void;
   flagIncomplete?: boolean;
 }) {
+  // Live draft string for the number field being typed in, so the controlled
+  // inputs never rewrite keystrokes mid-edit (a cleared qty snapping back to 1,
+  // a leading '0' vanishing). Parsed live for totals; normalized on blur.
+  const [draft, setDraft] = useState<{ key: string; value: string } | null>(null);
+
   const update = (i: number, patch: Partial<ItemDraft>) => {
     const next = items.slice();
     next[i] = { ...next[i], ...patch };
@@ -105,13 +111,20 @@ export default function ItemsEditor({
             <div className="grid grid-cols-3 gap-x-2 gap-y-1 md:contents">
               <span className={miniLabelCls}>Qty</span>
               <span className={miniLabelCls}>Unit</span>
-              <span className={miniLabelCls}>Amount</span>
+              <span className={`${miniLabelCls} text-right`}>Amount</span>
               <input
                 type="number"
                 min="0"
                 step="any"
-                value={it.qty}
-                onChange={(e) => update(i, { qty: parseFloat(e.target.value) || 1 })}
+                value={draft?.key === `${i}:qty` ? draft.value : it.qty === 0 ? '' : it.qty}
+                onChange={(e) => {
+                  setDraft({ key: `${i}:qty`, value: e.target.value });
+                  update(i, { qty: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 });
+                }}
+                onBlur={() => {
+                  setDraft(null);
+                  if (!(it.qty > 0)) update(i, { qty: 1 });
+                }}
                 className={`${inputCls} w-full min-w-0`}
               />
               <input
@@ -131,8 +144,12 @@ export default function ItemsEditor({
                 min="0"
                 step="0.01"
                 inputMode="decimal"
-                value={it.amount || ''}
-                onChange={(e) => update(i, { amount: parseFloat(e.target.value) || 0 })}
+                value={draft?.key === `${i}:amount` ? draft.value : it.amount === 0 ? '' : it.amount}
+                onChange={(e) => {
+                  setDraft({ key: `${i}:amount`, value: e.target.value });
+                  update(i, { amount: parseFloat(e.target.value) || 0 });
+                }}
+                onBlur={() => setDraft(null)}
                 className={`${inputCls} w-full min-w-0 text-right [font-variant-numeric:tabular-nums]`}
                 style={warn ? warnBorderStyle : undefined}
               />
@@ -172,7 +189,7 @@ export default function ItemsEditor({
           + Add line item
         </Button>
         {items.length > 0 && (
-          <span className={`text-xs ${mismatch ? 'text-warning' : 'text-textMuted'}`}>
+          <span className={`text-xs ${mismatch ? 'text-warning' : 'text-textSecondary'}`}>
             Items total {formatMoney(itemsSum)}
             {mismatch && transactionTotal != null && ` ≠ transaction ${formatMoney(transactionTotal)}`}
             {mismatch && onUseTotal && (

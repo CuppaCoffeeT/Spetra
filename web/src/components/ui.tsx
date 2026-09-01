@@ -40,7 +40,7 @@ export function AmountText({
   const color = direction === 'in' ? 'text-income' : 'text-textPrimary';
   const sign = direction === 'in' ? '+' : '';
   return (
-    <span className={`[font-variant-numeric:tabular-nums] ${color} ${className}`}>
+    <span className={`[font-variant-numeric:tabular-nums] font-medium ${color} ${className}`}>
       {sign}
       {formatMoney(amount, currency)}
     </span>
@@ -161,12 +161,23 @@ export function Chip({
   );
 }
 
-export function Field({ label, children }: { label: string; children: ReactNode }) {
+export function Field({
+  label,
+  children,
+  as = 'label',
+}: {
+  label: string;
+  children: ReactNode;
+  // 'div' for composite children (chip groups): a <label> caption tap would
+  // activate the first labelable descendant and silently flip the selection.
+  as?: 'label' | 'div';
+}) {
+  const Tag = as;
   return (
-    <label className="flex flex-col gap-1 text-sm">
+    <Tag className="flex flex-col gap-1 text-sm">
       <span className="text-textSecondary">{label}</span>
       {children}
-    </label>
+    </Tag>
   );
 }
 
@@ -198,7 +209,7 @@ export function Badge({
           : 'text-textMuted';
   return (
     <span
-      className={`inline-block rounded-full border border-border bg-transparent px-2 py-0.5 text-[11px] font-medium ${cls}`}
+      className={`inline-block shrink-0 whitespace-nowrap rounded-full border border-border bg-transparent px-2 py-0.5 text-[11px] font-medium ${cls}`}
     >
       {children}
     </span>
@@ -238,7 +249,7 @@ export function Modal({
   }, []);
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 md:items-center md:justify-start md:overflow-y-auto md:p-10"
+      className="fixed inset-0 z-50 flex flex-col overflow-y-auto overscroll-contain bg-black/40 md:items-center md:p-10"
       onClick={() => requestClose('backdrop')}
     >
       <div

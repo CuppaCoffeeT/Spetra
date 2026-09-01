@@ -70,6 +70,11 @@ export default function Add({ userId }: { userId: string }) {
   const typedRef = useRef({ description: '', amount: '' });
   typedRef.current = { description, amount };
 
+  // Latest category pick, readable from async suggestion completions — a slow
+  // suggestion must never clobber a category the user chose while it was in flight.
+  const categoryRef = useRef(category);
+  categoryRef.current = category;
+
   // Revoke the thumbnail object URL on clear/replace/unmount.
   const receiptUrlRef = useRef<string | null>(null);
   receiptUrlRef.current = receiptUrl;
@@ -92,10 +97,12 @@ export default function Add({ userId }: { userId: string }) {
     setNoMatch(false);
     const s = await suggestCategory(text);
     setSuggesting(false);
+    // The user picked a category while the request was in flight — theirs wins.
+    if (categoryRef.current) return;
     // Only apply suggestions that name a category that still exists.
     if (s?.category && cats.some((c) => c.name === s.category)) {
       setSuggestion(s);
-      setCategory(s.category);
+      setCategory((cur) => cur || s.category);
     } else {
       setNoMatch(true);
     }
@@ -114,9 +121,11 @@ export default function Add({ userId }: { userId: string }) {
       setNoMatch(false);
       const s = await suggestCategory(parsed.merchant);
       setSuggesting(false);
+      // The user picked a category while the request was in flight — theirs wins.
+      if (categoryRef.current) return;
       if (s?.category && cats.some((c) => c.name === s.category)) {
         setSuggestion(s);
-        setCategory(s.category);
+        setCategory((cur) => cur || s.category);
       } else {
         setNoMatch(true);
       }
@@ -302,7 +311,7 @@ export default function Add({ userId }: { userId: string }) {
             variant="ghost"
             onClick={() => cameraRef.current?.click()}
             disabled={scanning}
-            className="w-full md:w-auto"
+            className="w-full rounded-lg border border-border md:w-auto"
           >
             Take a photo
           </Button>
@@ -452,7 +461,9 @@ export default function Add({ userId }: { userId: string }) {
         </div>
 
         <div className="mt-5 border-t border-border pt-4">
-          <h3 className="mb-2 text-sm font-medium">Line items (optional)</h3>
+          <h3 className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-textSecondary">
+            Line items · optional
+          </h3>
           <ItemsEditor
             items={items}
             onChange={(next) => {
@@ -466,22 +477,23 @@ export default function Add({ userId }: { userId: string }) {
           />
         </div>
 
-        {warnedIncomplete && incompleteCount > 0 && (
-          <p className="mt-3 text-xs text-warning">
-            {incompleteCount === 1
-              ? '1 line item is incomplete and will be dropped.'
-              : `${incompleteCount} line items are incomplete and will be dropped.`}
-          </p>
-        )}
-        {error && <p className="mt-3 text-sm text-expense">{error}</p>}
-
-        <div className="sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-10 -mx-5 mt-5 flex items-center justify-end gap-3 border-t border-border bg-surface/95 px-5 py-3 backdrop-blur md:static md:bottom-auto md:mx-0 md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
-          <Button variant="ghost" onClick={() => void save(true)} disabled={saving}>
-            Save & add another
-          </Button>
-          <Button onClick={() => void save(false)} disabled={saving} className="flex-1 md:flex-none">
-            {saving ? 'Saving…' : 'Save transaction'}
-          </Button>
+        <div className="sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-10 -mx-5 mt-5 flex flex-col gap-2 border-t border-border bg-surface/95 px-5 py-3 backdrop-blur md:static md:bottom-auto md:mx-0 md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
+          {warnedIncomplete && incompleteCount > 0 && (
+            <p className="text-xs text-warning">
+              {incompleteCount === 1
+                ? '1 line item is incomplete and will be dropped.'
+                : `${incompleteCount} line items are incomplete and will be dropped.`}
+            </p>
+          )}
+          {error && <p className="text-sm text-expense">{error}</p>}
+          <div className="flex items-center justify-end gap-3">
+            <Button variant="ghost" onClick={() => void save(true)} disabled={saving}>
+              Save & add another
+            </Button>
+            <Button onClick={() => void save(false)} disabled={saving} className="flex-1 md:flex-none">
+              {saving ? 'Saving…' : 'Save transaction'}
+            </Button>
+          </div>
         </div>
       </Card>
     </div>

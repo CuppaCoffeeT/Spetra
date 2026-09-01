@@ -478,7 +478,8 @@ export function currentMonth(): string {
 }
 
 export function monthOf(isoDate: string): string {
-  return isoDate.slice(0, 7);
+  const d = new Date(isoDate);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
 export function spentByCategory(
@@ -501,6 +502,12 @@ export function formatMoney(amount: number, currency = 'SGD'): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+// Shared date rendering — pins en-SG (D/M/YYYY) so list rows match the editor's
+// datetime-local order instead of drifting with the runtime's default locale.
+export function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-SG');
 }
 
 export function formatMonthLabel(month: string): string {

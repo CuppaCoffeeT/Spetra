@@ -142,7 +142,7 @@ function ToastSlip({ payload, onDismiss }: { payload: ToastPayload; onDismiss: (
         {action && (
           <button
             type="button"
-            className={`-my-2 shrink-0 rounded px-1 py-2 text-[13px] font-medium text-accent ${FOCUS_RING}`}
+            className={`-mx-1 -my-3 min-h-[44px] min-w-[44px] shrink-0 rounded px-2 py-2 text-[13px] font-medium text-accent ${FOCUS_RING}`}
             onClick={() => {
               action.run();
               leave();
@@ -190,6 +190,7 @@ function ThemeOptions({ compact = false }: { compact?: boolean }) {
     <button
       key={m}
       type="button"
+      aria-pressed={mode === m}
       onClick={() => setMode(m)}
       className={`min-h-[44px] rounded px-2 text-sm transition-colors duration-[160ms] ease-house ${FOCUS_RING} ${
         mode === m ? 'font-medium text-textPrimary' : 'text-textSecondary'
@@ -211,6 +212,8 @@ function ThemeOptions({ compact = false }: { compact?: boolean }) {
 }
 
 function MoreSheet({ onClose }: { onClose: () => void }) {
+  const firstRowRef = useRef<HTMLAnchorElement>(null);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -218,6 +221,19 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  // Focus management: move focus into the sheet on open, hand it back to the
+  // opener (the More tab) on close, and lock the page scroll behind the sheet.
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    firstRowRef.current?.focus();
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      opener?.focus();
+    };
+  }, []);
 
   const rowCls =
     `flex h-12 items-center gap-3 px-5 text-sm text-textPrimary transition-colors duration-[160ms] ease-house hover:bg-surfaceAlt ${FOCUS_RING}`;
@@ -231,7 +247,7 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
         aria-label="More"
         className="absolute inset-x-0 bottom-0 animate-sheet-rise rounded-t-[20px] border-t border-border bg-surface pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2"
       >
-        <NavLink to="/categories" className={rowCls} onClick={onClose}>
+        <NavLink ref={firstRowRef} to="/categories" className={rowCls} onClick={onClose}>
           <span className="text-textSecondary">
             <IconTag />
           </span>
@@ -276,7 +292,7 @@ function Shell({ userId }: { userId: string }) {
   const moreActive = location.pathname.startsWith('/categories') || location.pathname.startsWith('/settings');
 
   return (
-    <div className="flex min-h-dvh">
+    <div className="flex min-h-dvh md:h-dvh">
       <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-surface p-4 md:flex">
         <div className="mb-8 px-2 font-display text-lg font-medium text-textPrimary">Spend Tracker</div>
         <nav className="flex flex-col gap-1">
@@ -311,7 +327,7 @@ function Shell({ userId }: { userId: string }) {
         </div>
       </aside>
 
-      <main className="flex-1 p-4 pb-24 md:overflow-y-auto md:p-8 md:pb-8">
+      <main className="min-w-0 flex-1 p-4 pb-24 md:overflow-y-auto md:p-8 md:pb-8">
         <Routes>
           <Route path="/" element={<Dashboard userId={userId} />} />
           <Route path="/transactions" element={<Transactions userId={userId} />} />

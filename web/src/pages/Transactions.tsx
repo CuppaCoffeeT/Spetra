@@ -5,12 +5,14 @@ import {
   fetchItemizedIds,
   fetchItems,
   fetchTransactions,
+  formatDate,
   formatMoney,
   formatMonthLabel,
   monthOf,
   updateTransaction,
 } from '../lib/api';
 import { useLiveTransactions } from '../lib/realtime';
+import { showToast } from '../lib/toastBus';
 import type { Category, Transaction, TransactionItem } from '../lib/types';
 import TransactionEditor from '../components/TransactionEditor';
 import { AmountText, Badge, Card, Chip, ColorDot, PageTitle, Spinner, TextInput } from '../components/ui';
@@ -132,7 +134,17 @@ export default function Transactions({ userId }: { userId: string }) {
 
   // One tap clears the flag; the badge cross-fades out instead of vanishing.
   const confirmTxn = (t: Transaction) => {
-    updateTransaction(t.id, { needsReview: false }).catch(console.error);
+    updateTransaction(t.id, { needsReview: false }).catch(() => {
+      // Roll back the optimistic clear — a silent failure would let the
+      // flag quietly return on the next load.
+      setTxns((prev) => prev.map((p) => (p.id === t.id ? { ...p, needsReview: true } : p)));
+      setFadingBadges((prev) => {
+        const n = new Set(prev);
+        n.delete(t.id);
+        return n;
+      });
+      showToast({ kind: 'note', tone: 'warning', message: 'Could not confirm — try again.' });
+    });
     setFadingBadges((prev) => new Set(prev).add(t.id));
     setTxns((prev) => prev.map((p) => (p.id === t.id ? { ...p, needsReview: false } : p)));
     window.setTimeout(() => {
@@ -261,7 +273,7 @@ export default function Transactions({ userId }: { userId: string }) {
                             {itemized.has(t.id) && <Badge tone="accent">items</Badge>}
                           </div>
                           <div className="text-xs text-textSecondary">
-                            {new Date(t.transactionDate).toLocaleDateString()} ·{' '}
+                            {formatDate(t.transactionDate)} ·{' '}
                             {t.category ?? 'Uncategorized'}
                             {t.source !== 'manual' ? ` · ${t.source}` : ''}
                             {t.cardLabel ? ` · ${t.cardLabel}` : ''}
@@ -275,22 +287,27 @@ export default function Transactions({ userId }: { userId: string }) {
                         className="shrink-0"
                       />
                     </button>
-                    {t.needsReview && (
+                    {/* Action cluster: constant width on md+ so the amount
+                        column keeps one right edge; intrinsic on mobile so the
+                        reservation never squeezes the merchant name. */}
+                    <div className="flex shrink-0 items-center justify-end gap-1 md:w-28">
+                      {t.needsReview && (
+                        <button
+                          type="button"
+                          onClick={() => confirmTxn(t)}
+                          className="-my-2 min-h-[44px] shrink-0 rounded-lg px-2 py-2.5 text-[13px] font-medium text-accent transition-colors duration-[160ms] ease-house hover:bg-surfaceAlt focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent"
+                        >
+                          Confirm
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => confirmTxn(t)}
-                        className="-my-2 min-h-[44px] shrink-0 rounded-lg px-2 py-2.5 text-[13px] font-medium text-accent transition-colors duration-[160ms] ease-house hover:bg-surfaceAlt focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent"
+                        onClick={() => setEditing(t)}
+                        className="-my-2 min-h-[44px] shrink-0 rounded-lg px-2 py-2.5 text-[13px] text-textSecondary transition-colors duration-[160ms] ease-house hover:bg-surfaceAlt focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent"
                       >
-                        Confirm
+                        Edit
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setEditing(t)}
-                      className="-my-2 min-h-[44px] shrink-0 rounded-lg px-2 py-2.5 text-[13px] text-textSecondary transition-colors duration-[160ms] ease-house hover:bg-surfaceAlt focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent"
-                    >
-                      Edit
-                    </button>
+                    </div>
                   </div>
 
                   {expanded && (

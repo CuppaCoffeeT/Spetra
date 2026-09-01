@@ -57,3 +57,4 @@ integrations/cloudflare-email-worker/node_modules
 # Playwright
 web/test-results/
 web/playwright-report/
+web/e2e/__screens/

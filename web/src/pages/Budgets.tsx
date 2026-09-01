@@ -12,6 +12,7 @@ import {
   spentByCategory,
 } from '../lib/api';
 import { useLiveTransactions } from '../lib/realtime';
+import { showToast } from '../lib/toastBus';
 import type { Budget, Category, Transaction } from '../lib/types';
 import { AmountText, Button, Card, ColorDot, PageTitle, ProgressBar, Spinner, TextInput } from '../components/ui';
 import { ChevronLeft, ChevronRight } from '../components/Icons';
@@ -55,20 +56,43 @@ export default function Budgets({ userId }: { userId: string }) {
     setStaggered(false);
   }, [month]);
 
+  // Spec §3: never silently mangle input. An invalid cap keeps the editor
+  // open (the inline hint says why); only a real save or Cancel closes it.
+  const draftValue = parseFloat(draft);
+  const draftValid = Number.isFinite(draftValue) && draftValue > 0;
+
   const saveCap = async (categoryId: string) => {
-    const limit = parseFloat(draft);
-    if (Number.isFinite(limit) && limit > 0) {
-      await setBudget(userId, categoryId, month, limit);
-      await load();
-    }
+    if (!draftValid) return;
+    await setBudget(userId, categoryId, month, draftValue);
+    await load();
     setEditing(null);
     setDraft('');
   };
 
-  const removeCap = async (budgetId: string, catName: string) => {
-    if (!confirm(`Remove the ${catName} cap for ${formatMonthLabel(month)}?`)) return;
-    await clearBudget(budgetId);
+  const cancelEdit = () => {
+    setEditing(null);
+    setDraft('');
+  };
+
+  // One tap, reversible — the shared toast slip carries the Undo (spec §4
+  // pattern); no OS-chrome confirm() inside the ledger surface.
+  const removeCap = async (budget: Budget, catName: string) => {
+    const { categoryId, limitAmount } = budget;
+    const capMonth = month;
+    await clearBudget(budget.id);
     await load();
+    showToast({
+      kind: 'note',
+      label: 'CLEARED',
+      message: `${catName} cap — ${formatMoney(limitAmount)}`,
+      action: {
+        label: 'Undo',
+        run: () => {
+          if (!categoryId) return;
+          void setBudget(userId, categoryId, capMonth, limitAmount).then(load);
+        },
+      },
+    });
   };
 
   const prevMonth = shiftMonth(month, -1);
@@ -87,6 +111,9 @@ export default function Budgets({ userId }: { userId: string }) {
       }
       await load();
       setStaggered(true);
+      // One-shot: covers the 240ms row-in animation + max stagger delay, so a
+      // cap set later in the same visit doesn't replay the fade.
+      window.setTimeout(() => setStaggered(false), 600);
     } finally {
       setCarrying(false);
     }
@@ -142,6 +169,7 @@ export default function Budgets({ userId }: { userId: string }) {
         </button>
       </div>
 
+      {cats.length > 0 && (
       <Card className="mb-6">
         <div className="mb-1 flex justify-between text-sm">
           <span className="text-textSecondary">Budgeted</span>
@@ -159,7 +187,7 @@ export default function Budgets({ userId }: { userId: string }) {
           {isCurrentMonth && (
             <span
               aria-hidden="true"
-              className="absolute top-1/2 h-[14px] w-px -translate-y-1/2"
+              className="absolute top-1/2 h-[14px] w-px -translate-x-1/2 -translate-y-1/2"
               style={{
                 left: `${elapsed * 100}%`,
                 background: 'var(--text-primary)',
@@ -174,6 +202,7 @@ export default function Budgets({ userId }: { userId: string }) {
           </p>
         )}
       </Card>
+      )}
 
       {monthBudgets.length === 0 && priorBudgets.length > 0 && (
         <div className="-mt-3 mb-6">
@@ -188,6 +217,19 @@ export default function Budgets({ userId }: { userId: string }) {
         </div>
       )}
 
+      {cats.length === 0 ? (
+        <Card>
+          <div className="py-12 text-center text-sm text-textSecondary">
+            <p>No categories yet.</p>
+            <Link
+              to="/categories"
+              className="mt-1 inline-block rounded-lg py-3 text-accent focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent"
+            >
+              Create one to set a cap.
+            </Link>
+          </div>
+        </Card>
+      ) : (
       <div className="flex flex-col gap-3">
         {rows.map(({ cat, budget, limit, spent, pct, over, hasBudget }) => {
           if (hasBudget) budgetIdx += 1;
@@ -207,55 +249,67 @@ export default function Budgets({ userId }: { userId: string }) {
                   <ColorDot color={cat.color} />
                   {cat.name}
                 </Link>
-                <span className="flex flex-wrap items-center gap-3 text-sm text-textSecondary">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm text-textSecondary">
                   {editing === cat.id ? (
-                    <>
-                      <TextInput
-                        type="number"
-                        inputMode="decimal"
-                        min="0"
-                        step="1"
-                        value={draft}
-                        autoFocus
-                        placeholder="Cap"
-                        onChange={(e) => setDraft(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && saveCap(cat.id)}
-                        className="w-24 flex-1 sm:flex-none"
-                      />
-                      <Button onClick={() => saveCap(cat.id)}>Set</Button>
-                      <Button variant="ghost" onClick={() => setEditing(null)}>
-                        Cancel
-                      </Button>
-                    </>
+                    <span className="flex w-full flex-col gap-1">
+                      <span className="flex items-center gap-3">
+                        <TextInput
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="1"
+                          value={draft}
+                          autoFocus
+                          placeholder="Cap"
+                          onChange={(e) => setDraft(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && saveCap(cat.id)}
+                          className="w-24 flex-1 sm:flex-none"
+                        />
+                        <Button className="-my-1 min-h-[44px]" onClick={() => saveCap(cat.id)} disabled={!draftValid}>
+                          Set
+                        </Button>
+                        <Button variant="ghost" className="-my-1 min-h-[44px]" onClick={cancelEdit}>
+                          Cancel
+                        </Button>
+                      </span>
+                      {draft !== '' && !draftValid && (
+                        <span className="text-[11px] text-textSecondary">Enter an amount above zero.</span>
+                      )}
+                    </span>
                   ) : hasBudget ? (
                     <>
-                      <span className="[font-variant-numeric:tabular-nums]">{formatMoney(spent)} / {formatMoney(limit)}</span>
-                      {!over && (
-                        <span className="[font-variant-numeric:tabular-nums] text-textSecondary">
-                          {formatMoney(limit - spent)} left
-                        </span>
-                      )}
-                      <Button
-                        variant="ghost"
-                        className="-my-1 min-h-[44px]"
-                        onClick={() => {
-                          setEditing(cat.id);
-                          setDraft(String(limit));
-                        }}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        variant="danger"
-                        className="-my-1 min-h-[44px]"
-                        onClick={() => budget && removeCap(budget.id, cat.name)}
-                      >
-                        Clear
-                      </Button>
+                      <span className="flex items-center gap-3">
+                        <span className="[font-variant-numeric:tabular-nums]">{formatMoney(spent)} / {formatMoney(limit)}</span>
+                        {!over && (
+                          <span className="[font-variant-numeric:tabular-nums] text-textSecondary">
+                            {formatMoney(limit - spent)} left
+                          </span>
+                        )}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          className="-my-1 min-h-[44px]"
+                          onClick={() => {
+                            setEditing(cat.id);
+                            setDraft(String(limit));
+                          }}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="danger"
+                          className="-my-1 min-h-[44px]"
+                          onClick={() => budget && removeCap(budget, cat.name)}
+                        >
+                          Clear
+                        </Button>
+                      </span>
                     </>
                   ) : (
                     <Button
                       variant="ghost"
+                      className="-my-1 min-h-[44px]"
                       onClick={() => {
                         setEditing(cat.id);
                         setDraft('');
@@ -264,7 +318,7 @@ export default function Budgets({ userId }: { userId: string }) {
                       Set budget
                     </Button>
                   )}
-                </span>
+                </div>
               </div>
               {hasBudget && (
                 <>
@@ -277,6 +331,7 @@ export default function Budgets({ userId }: { userId: string }) {
           );
         })}
       </div>
+      )}
     </div>
   );
 }

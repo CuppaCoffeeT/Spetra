@@ -7,6 +7,8 @@ import {
   fetchRules,
   updateCategory,
 } from '../lib/api';
+import { supabase } from '../lib/supabase';
+import { showToast } from '../lib/toastBus';
 import type { Category, Rule } from '../lib/types';
 import { Badge, Button, Card, PageTitle, Spinner, TextInput } from '../components/ui';
 
@@ -113,9 +115,42 @@ export default function Categories({ userId }: { userId: string }) {
     load();
   };
 
+  // Undo for the FORGOTTEN slip: re-insert the rule exactly as it was
+  // (same pattern/category/priority), then refresh ids from the server.
+  const restoreRule = async (rule: Rule) => {
+    const { error } = await supabase.from('rules').upsert(
+      {
+        user_id: userId,
+        pattern: rule.pattern,
+        category: rule.category,
+        priority: rule.priority,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,pattern' }
+    );
+    if (error) {
+      showToast({ kind: 'note', tone: 'warning', message: 'Could not restore the rule.' });
+      return;
+    }
+    setRules(await fetchRules(userId));
+  };
+
   const removeRule = async (rule: Rule) => {
-    await deleteRule(rule.id);
+    const prev = rules;
     setRules((rs) => rs.filter((r) => r.id !== rule.id));
+    try {
+      await deleteRule(rule.id);
+    } catch {
+      setRules(prev);
+      showToast({ kind: 'note', tone: 'warning', message: 'Could not forget — try again.' });
+      return;
+    }
+    showToast({
+      kind: 'note',
+      label: 'FORGOTTEN',
+      message: `${rule.pattern} → ${rule.category}`,
+      action: { label: 'Undo', run: () => void restoreRule(rule) },
+    });
   };
 
   if (loading) return <Spinner />;
@@ -131,7 +166,7 @@ export default function Categories({ userId }: { userId: string }) {
             placeholder="New category name"
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && add()}
-            className="flex-1"
+            className="min-w-0 flex-1"
           />
           <Button onClick={add}>Add</Button>
         </div>
@@ -144,7 +179,7 @@ export default function Categories({ userId }: { userId: string }) {
             >
               <label
                 title="Colour"
-                className="-m-2 grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-lg focus-within:ring-1 focus-within:ring-inset focus-within:ring-accent"
+                className="-m-2 grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-lg transition-colors duration-[160ms] ease-house hover:bg-surfaceAlt focus-within:ring-1 focus-within:ring-inset focus-within:ring-accent"
               >
                 <span
                   aria-hidden="true"
@@ -162,7 +197,7 @@ export default function Categories({ userId }: { userId: string }) {
               <TextInput
                 defaultValue={c.name}
                 onBlur={(e) => rename(c, e.target.value)}
-                className="flex-1 border-transparent bg-transparent"
+                className="min-w-0 flex-1 border-transparent bg-transparent transition-colors duration-[160ms] ease-house hover:border-border"
               />
               <Button variant="danger" className="-my-0.5 min-h-[44px]" onClick={() => removeCat(c)}>
                 Delete
@@ -187,8 +222,8 @@ export default function Categories({ userId }: { userId: string }) {
         </div>
       </Card>
 
-      <PageTitle>Learned rules</PageTitle>
       <Card>
+        <h2 className="mb-1 font-medium">Learned rules</h2>
         <p className="mb-4 text-sm text-textSecondary">
           What the categorizer has learned. Merchant keywords map to categories; your corrections
           outrank AI guesses. Delete a rule to make the categorizer re-decide next time.
@@ -206,10 +241,10 @@ export default function Categories({ userId }: { userId: string }) {
                   key={r.id}
                   className="flex items-center justify-between gap-3 border-b border-border py-2 text-sm last:border-0"
                 >
-                  <div className="flex min-w-0 items-center gap-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                     <code className="rounded bg-surfaceAlt px-2 py-0.5 text-xs">{r.pattern}</code>
                     <span className="text-textMuted">→</span>
-                    <span>{r.category}</span>
+                    <span className="truncate">{r.category}</span>
                     <Badge tone={src.tone === 'muted' ? undefined : src.tone}>{src.label}</Badge>
                   </div>
                   <Button

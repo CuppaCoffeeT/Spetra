@@ -23,12 +23,16 @@ function CopyButton({ text, className = '' }: { text: string; className?: string
       variant="ghost"
       className={className}
       onClick={() => {
-        navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
+        navigator.clipboard
+          .writeText(text)
+          .then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          })
+          .catch(() => {});
       }}
     >
-      {copied ? 'Copied ✓' : 'Copy'}
+      {copied ? 'Copied' : 'Copy'}
     </Button>
   );
 }
@@ -64,7 +68,7 @@ function CategorizerCard() {
         total = r.total;
         setMsg(`Seeding… ${total - remaining}/${total}`);
       }
-      setMsg('Starter examples seeded ✓');
+      setMsg('Starter examples seeded.');
       setStatus(await categorizerStatus());
     } catch (e) {
       setMsg(e instanceof Error ? e.message : 'Seeding failed.');
@@ -76,7 +80,7 @@ function CategorizerCard() {
   return (
     <Card className="mb-6">
       <h2 className="mb-1 font-medium">Self-learning categorizer</h2>
-      <p className="mb-3 text-sm text-textMuted">
+      <p className="mb-3 text-sm text-textSecondary">
         Runs entirely inside your Supabase backend (built-in embedding model + your labeled
         history) — no external AI key needed. Every category correction you make becomes a labeled
         example, so it gets smarter with use.
@@ -153,7 +157,7 @@ export default function Settings({ userId }: { userId: string }) {
 
       <Card className="mb-6">
         <h2 className="mb-1 font-medium">Auto-tracking keys</h2>
-        <p className="mb-4 text-sm text-textMuted">
+        <p className="mb-4 text-sm text-textSecondary">
           Secrets that let your iPhone Shortcut and the email worker post transactions into your
           account. Treat them like passwords — revoke any that leak.
         </p>
@@ -214,7 +218,7 @@ export default function Settings({ userId }: { userId: string }) {
 
       <Card className="mb-6">
         <h2 className="mb-1 font-medium">Live Apple Pay tracking (iOS Shortcut)</h2>
-        <p className="mb-3 text-sm text-textMuted">
+        <p className="mb-3 text-sm text-textSecondary">
           Every card tap creates a transaction here within seconds. One-time setup on your iPhone
           (iOS 17+):
         </p>
@@ -231,11 +235,11 @@ export default function Settings({ userId }: { userId: string }) {
           <li>
             For the action, add <b className="font-medium">Get Contents of URL</b> and configure:
             <div className="mt-2 overflow-x-auto rounded-lg bg-surfaceAlt p-3 font-mono text-xs leading-relaxed">
-              URL: {INGEST_URL}
+              URL: <span className="break-all">{INGEST_URL}</span>
               <br />
               Method: POST
               <br />
-              Headers: x-ingest-key = {firstKey}
+              Headers: x-ingest-key = <span className="break-all">{firstKey}</span>
               <br />
               Request Body (JSON):
               <br />
