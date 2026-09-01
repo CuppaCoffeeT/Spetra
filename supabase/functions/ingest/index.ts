@@ -177,10 +177,30 @@ Deno.serve(async (req) => {
     const hash = legacyDedupeHash(parsed.amount, parsed.transactionDate, parsed.description);
     const { data: dup } = await supabase
       .from('transactions')
-      .select('id')
+      .select('id, source, source_meta')
       .eq('dedupe_hash', hash)
       .maybeSingle();
-    if (dup) return json(200, { status: 'duplicate', id: dup.id });
+    if (dup) {
+      // A same-day tap + alert with identical merchant text collides on the
+      // exact hash — still enrich the shortcut row instead of dropping the
+      // email's metadata (found live: smoke test 2026-09-01).
+      if (dup.source === 'shortcut' && !(dup.source_meta?.email_matched)) {
+        await supabase
+          .from('transactions')
+          .update({
+            source_email: body.from ?? null,
+            source_meta: {
+              ...(dup.source_meta ?? {}),
+              email_matched: true,
+              email_description: parsed.description,
+              email_subject: subject.slice(0, 200),
+            },
+          })
+          .eq('id', dup.id);
+        return json(200, { status: 'merged', id: dup.id });
+      }
+      return json(200, { status: 'duplicate', id: dup.id });
+    }
 
     // Cross-source: the Shortcut row for this tap usually exists already.
     const shortcutRow = await findMergeCandidate(
