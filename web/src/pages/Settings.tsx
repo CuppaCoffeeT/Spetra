@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { createIngestKey, deleteIngestKey, fetchIngestKeys } from '../lib/api';
+import {
+  categorizerStatus,
+  createIngestKey,
+  deleteIngestKey,
+  fetchIngestKeys,
+  seedCategorizer,
+} from '../lib/api';
 import { supabase } from '../lib/supabase';
-import type { IngestKey } from '../lib/types';
+import type { CategorizerStatus, IngestKey } from '../lib/types';
 import { Badge, Button, Card, PageTitle, Spinner, TextInput } from '../components/ui';
 
 const INGEST_URL = `${
@@ -22,6 +28,81 @@ function CopyButton({ text }: { text: string }) {
     >
       {copied ? 'Copied ✓' : 'Copy'}
     </Button>
+  );
+}
+
+function CategorizerCard() {
+  const [status, setStatus] = useState<CategorizerStatus | null>(null);
+  const [checked, setChecked] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    categorizerStatus().then((s) => {
+      setStatus(s);
+      setChecked(true);
+    });
+  }, []);
+
+  const seed = async () => {
+    setSeeding(true);
+    setMsg(null);
+    try {
+      // Seeding is chunked server-side (embedding CPU limits) — loop until
+      // done, but stop on stall (no progress) or after a sane number of
+      // rounds; the server also 500s on a zero-progress batch.
+      let remaining = Infinity;
+      let total = 0;
+      for (let round = 0; remaining > 0 && round < 12; round++) {
+        const r = await seedCategorizer();
+        if (r.seeded === 0 && r.remaining > 0) {
+          throw new Error('Seeding stalled — embedding model unavailable?');
+        }
+        remaining = r.remaining;
+        total = r.total;
+        setMsg(`Seeding… ${total - remaining}/${total}`);
+      }
+      setMsg('Starter examples seeded ✓');
+      setStatus(await categorizerStatus());
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : 'Seeding failed.');
+    } finally {
+      setSeeding(false);
+    }
+  };
+
+  return (
+    <Card className="mb-6">
+      <h2 className="mb-1 font-semibold">🧠 Self-learning categorizer</h2>
+      <p className="mb-3 text-sm text-textMuted">
+        Runs entirely inside your Supabase backend (built-in embedding model + your labeled
+        history) — no external AI key needed. Every category correction you make becomes a labeled
+        example, so it gets smarter with use.
+      </p>
+      {!checked ? (
+        <Spinner />
+      ) : status === null ? (
+        <p className="text-sm text-warning">
+          Categorizer function not reachable — deploy the edge functions first.
+        </p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <Badge>{status.examples} examples</Badge>
+          <Badge tone="income">{status.corrections} from your corrections</Badge>
+          <Badge>{status.seeds} starter seeds</Badge>
+          <Button variant="ghost" onClick={seed} disabled={seeding}>
+            {seeding ? 'Seeding…' : status.seeds > 0 ? 'Re-seed starters' : 'Seed starter examples'}
+          </Button>
+        </div>
+      )}
+      {msg && <p className="mt-2 text-sm text-textSecondary">{msg}</p>}
+      <p className="mt-3 text-xs text-textMuted">
+        Optional extras (function secrets): <code>CF_ACCOUNT_ID</code> + <code>CF_API_TOKEN</code>{' '}
+        enable a free Cloudflare Workers AI fallback for brand-new merchants;{' '}
+        <code>ANTHROPIC_API_KEY</code> enables Claude fallback + receipt line-item scanning. Without
+        them, unknown merchants simply land in the review queue for a one-time correction.
+      </p>
+    </Card>
   );
 }
 
@@ -115,6 +196,8 @@ export default function Settings({ userId }: { userId: string }) {
           <CopyButton text={INGEST_URL} />
         </div>
       </Card>
+
+      <CategorizerCard />
 
       <Card className="mb-6">
         <h2 className="mb-1 font-semibold">📱 Live Apple Pay tracking (iOS Shortcut)</h2>

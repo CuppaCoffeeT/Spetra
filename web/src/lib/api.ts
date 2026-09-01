@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import type {
   Budget,
+  CategorizerStatus,
   CatSuggestion,
   Category,
   IngestKey,
@@ -370,6 +371,38 @@ export async function suggestCategory(text: string): Promise<CatSuggestion | nul
     return null;
   }
   return data as CatSuggestion;
+}
+
+// Teach the categorizer a correction server-side (embedded example + rule).
+// Falls back to the client-side rule upsert if the function isn't reachable.
+export async function learnCorrection(
+  userId: string,
+  text: string,
+  category: string
+): Promise<void> {
+  const { error } = await supabase.functions.invoke('categorize', {
+    body: { action: 'learn', text, category },
+  });
+  if (error) {
+    console.error('server learn failed, falling back to rule-only:', error.message ?? error);
+    await learnRule(userId, text, category);
+  }
+}
+
+export async function seedCategorizer(): Promise<{ seeded: number; remaining: number; total: number }> {
+  const { data, error } = await supabase.functions.invoke('categorize', {
+    body: { action: 'seed' },
+  });
+  if (error) throw new Error('Seeding failed — are the edge functions deployed?');
+  return data;
+}
+
+export async function categorizerStatus(): Promise<CategorizerStatus | null> {
+  const { data, error } = await supabase.functions.invoke('categorize', {
+    body: { action: 'status' },
+  });
+  if (error) return null;
+  return data as CategorizerStatus;
 }
 
 export class ReceiptNotConfiguredError extends Error {}

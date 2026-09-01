@@ -23,6 +23,7 @@ function todayLocal(): string {
 const TIER_LABEL: Record<CatSuggestion['tier'], string> = {
   rule: 'learned rule',
   keyword: 'keywords',
+  knn: 'similarity',
   llm: 'AI',
   none: 'fallback',
 };

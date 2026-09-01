@@ -83,28 +83,36 @@ as a manual backfill path.
 
 ---
 
-## Part 2 — Self-learning categorizer ("mini language model")
+## Part 2 — Self-learning categorizer ("mini language model", no external API required)
 
 One shared categorization service (Edge Function `categorize`, also called inline by `ingest`),
-three tiers — cheapest first:
+four tiers — cheapest first (*revised 2026-09-01: local-first, Anthropic no longer required*):
 
-1. **Learned rules** (existing `rules` table, upgraded): merchant-key → category mappings.
-   Confidence 0.99. *Written by tier 3 results and by every user correction.*
+1. **Learned rules** (existing `rules` table): merchant-key → category mappings.
+   Confidence 0.99. *Written by every user correction (200) and cached verdicts (50).*
 2. **Keyword scorer** (existing `scoreCategory` keyword sets, ported to the server): confidence 0.85.
-3. **LLM fallback** — only when tiers 1–2 miss: Claude **Haiku** with a strict JSON prompt
-   ("`BURGER KING SG` → {category: Food, confidence}"), constrained to the user's own category list.
-   The verdict is **written back to `rules`** (priority 50, below user corrections at 200), so the
-   same merchant never hits the LLM twice. Cost: fractions of a cent per *new* merchant, ~zero steady-state.
+3. **Embedding kNN (the local "mini language model")** — Supabase's **built-in `gte-small`**
+   model runs *inside* the edge function (`Supabase.ai.Session`, free, no key, ~100–200ms) and
+   embeds the merchant string; a pgvector RPC (`match_category_examples`) finds the nearest
+   labeled examples (`category_examples`: seed phrases + every past correction + cached
+   verdicts). Accepted at cosine ≥ 0.82; similarity = confidence. **This is the self-learning
+   core: each correction adds a labeled vector, so coverage grows with use, and no data leaves
+   your Supabase project.**
+4. **Generative fallback (optional)** — only for brand-new merchants tiers 1–3 miss:
+   Cloudflare **Workers AI** free tier (`llama-3.2-3b`, ~5–8k calls/day free, secrets
+   `CF_ACCOUNT_ID`+`CF_API_TOKEN`), else Claude **Haiku** (`ANTHROPIC_API_KEY`). The verdict is
+   cached as a priority-50 rule *and* an embedded example, so the same merchant never needs the
+   fallback twice. With neither secret set, tiers 1–3 still work and unknowns go to review.
 
-**The learning loop (already half-built, kept):** any manual re-categorization upserts a
-merchant→category rule at priority 200 — user corrections permanently outrank both keywords and
-LLM guesses. Low-confidence results (< 0.6) are flagged `needs_review` and surfaced in a review
-queue in the web app rather than silently mis-sorted.
+**The learning loop:** any manual re-categorization calls `categorize {action:'learn'}` →
+priority-200 rule + embedded example — user corrections permanently outrank everything else.
+Low-confidence results (< 0.6) are flagged `needs_review` and surfaced in a review queue rather
+than silently mis-sorted. Starter examples are seeded (chunked) from Settings.
 
-*Why not train/host an actual small model or embeddings+pgvector?* Volume is one user's
-transactions; a cached LLM-with-rules loop converges to a personal lookup table within weeks and
-costs ~nothing. Embeddings add infra without beating exact merchant matching at this scale.
-(If `ANTHROPIC_API_KEY` is not configured, tier 3 is skipped gracefully — tiers 1–2 still work.)
+*Why embeddings + kNN rather than only a cached LLM?* It removes the external-API dependency
+entirely for the live path, it's free at any volume, and it generalizes: one "SUSHI EXPRESS →
+Food" correction also pulls in other sushi merchants by meaning, which exact merchant-key rules
+can't do. Cold start is covered by seed phrases + the review queue.
 
 ---
 

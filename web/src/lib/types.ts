@@ -81,7 +81,13 @@ export interface IngestKey {
 export interface CatSuggestion {
   category: string;
   confidence: number;
-  tier: 'rule' | 'keyword' | 'llm' | 'none';
+  tier: 'rule' | 'keyword' | 'knn' | 'llm' | 'none';
+}
+
+export interface CategorizerStatus {
+  examples: number;
+  seeds: number;
+  corrections: number;
 }
 
 export interface ReceiptParse {

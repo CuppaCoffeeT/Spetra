@@ -204,7 +204,11 @@ Deno.serve(async (req) => {
       return json(200, { status: 'merged', id: shortcutRow.id });
     }
 
-    const cat = await categorizeFull(supabase, userId, `${parsed.description} ${subject}`);
+    // Subject helps the keyword tier (e.g. "PayNow" -> Transfer) but is a
+    // shared template — only the clean description may be learned/embedded.
+    const cat = await categorizeFull(
+      supabase, userId, `${parsed.description} ${subject}`, parsed.description
+    );
     const { data: inserted, error } = await supabase
       .from('transactions')
       .upsert(

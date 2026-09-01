@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   deleteTransaction,
   fetchItems,
-  learnRule,
+  learnCorrection,
   saveItems,
   updateTransaction,
 } from '../lib/api';
@@ -73,9 +73,10 @@ export default function TransactionEditor({
         notes: notes.trim() || null,
         needsReview: false,
       });
-      // The learning loop: correction -> permanent merchant rule.
+      // The learning loop: correction -> merchant rule + embedded example
+      // (feeds the kNN tier so similar merchants auto-sort next time).
       if (category && category !== (txn.category ?? '')) {
-        await learnRule(userId, txn.merchant ?? description, category);
+        await learnCorrection(userId, txn.merchant ?? description, category);
       }
       await saveItems(
         userId,
