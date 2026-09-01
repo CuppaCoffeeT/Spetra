@@ -44,3 +44,12 @@ yarn-error.*
 web/node_modules
 web/dist
 web/.vite
+
+# Claude Code local state + worktrees
+.claude/
+
+# Supabase CLI local state
+supabase/.temp/
+
+# Cloudflare worker deps
+integrations/cloudflare-email-worker/node_modules

@@ -1,0 +1,10 @@
+name = "spend-tracker-email-ingest"
+main = "worker.js"
+compatibility_date = "2026-08-01"
+
+# Set the real values before deploying:
+#   wrangler secret put INGEST_KEY
+# INGEST_URL / FORWARD_TO can stay as plain vars.
+[vars]
+INGEST_URL = "https://fpasfffeywotrclprcai.supabase.co/functions/v1/ingest"
+# FORWARD_TO = "you@gmail.com"

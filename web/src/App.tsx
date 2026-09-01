@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './lib/useAuth';
-import { supabase } from './lib/supabase';
-import { Spinner } from './components/ui';
+import { useLiveTransactions } from './lib/realtime';
+import { formatMoney } from './lib/api';
+import type { Transaction } from './lib/types';
+import { Spinner, Toast } from './components/ui';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
+import Add from './pages/Add';
 import Budgets from './pages/Budgets';
+import Categories from './pages/Categories';
+import Settings from './pages/Settings';
 
 function useDarkMode() {
   const [dark, setDark] = useState(() => window.matchMedia?.('(prefers-color-scheme: dark)').matches);
@@ -19,11 +24,23 @@ function useDarkMode() {
 const NAV = [
   { to: '/', label: 'Dashboard', end: true },
   { to: '/transactions', label: 'Transactions', end: false },
+  { to: '/add', label: 'Add', end: false },
   { to: '/budgets', label: 'Budgets', end: false },
+  { to: '/categories', label: 'Categories', end: false },
+  { to: '/settings', label: 'Settings', end: false },
 ];
 
 function Shell({ userId }: { userId: string }) {
   const { dark, toggle } = useDarkMode();
+  const [toasts, setToasts] = useState<Transaction[]>([]);
+
+  // Global "it just happened" feedback: any auto-ingested transaction pops a
+  // toast, whatever page is open.
+  useLiveTransactions(userId, (t) => {
+    setToasts((prev) => [...prev.slice(-2), t]);
+    setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== t.id)), 6000);
+  });
+
   return (
     <div className="flex min-h-screen">
       <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-surface p-4">
@@ -51,22 +68,35 @@ function Shell({ userId }: { userId: string }) {
           >
             {dark ? '☀︎ Light' : '☾ Dark'}
           </button>
-          <button
-            onClick={() => supabase.auth.signOut()}
-            className="rounded-lg px-3 py-2 text-left text-sm text-expense hover:bg-surfaceAlt"
-          >
-            Sign out
-          </button>
         </div>
       </aside>
       <main className="flex-1 overflow-y-auto p-8">
         <Routes>
           <Route path="/" element={<Dashboard userId={userId} />} />
           <Route path="/transactions" element={<Transactions userId={userId} />} />
+          <Route path="/add" element={<Add userId={userId} />} />
           <Route path="/budgets" element={<Budgets userId={userId} />} />
+          <Route path="/categories" element={<Categories userId={userId} />} />
+          <Route path="/settings" element={<Settings userId={userId} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+
+      <Toast>
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className="rounded-card border border-border bg-surface px-4 py-3 text-sm shadow-lg"
+          >
+            <span className="font-medium">
+              {t.direction === 'out' ? '💳' : '💰'} {formatMoney(t.amount, t.currency)}
+            </span>{' '}
+            <span className="text-textSecondary">
+              {t.merchant ?? t.description} · {t.category ?? 'Uncategorized'}
+            </span>
+          </div>
+        ))}
+      </Toast>
     </div>
   );
 }

@@ -9,8 +9,9 @@ import {
   spentByCategory,
   formatMoney,
 } from '../lib/api';
+import { useLiveTransactions } from '../lib/realtime';
 import type { Budget, Category, Transaction } from '../lib/types';
-import { AmountText, Card, ColorDot, PageTitle, ProgressBar, Spinner } from '../components/ui';
+import { AmountText, Badge, Card, ColorDot, PageTitle, ProgressBar, Spinner } from '../components/ui';
 
 export default function Dashboard({ userId }: { userId: string }) {
   const [txns, setTxns] = useState<Transaction[]>([]);
@@ -28,7 +29,11 @@ export default function Dashboard({ userId }: { userId: string }) {
       .finally(() => setLoading(false));
   }, [userId]);
 
+  // Live: a card tap lands on the dashboard the moment it's ingested.
+  useLiveTransactions(userId, (t) => setTxns((prev) => [t, ...prev.filter((p) => p.id !== t.id)]));
+
   const month = currentMonth();
+  const reviewCount = useMemo(() => txns.filter((t) => t.needsReview).length, [txns]);
   const colorOf = useMemo(() => {
     const m: Record<string, string | null> = {};
     cats.forEach((c) => (m[c.name] = c.color));
@@ -63,7 +68,19 @@ export default function Dashboard({ userId }: { userId: string }) {
 
   return (
     <div>
-      <PageTitle>Dashboard</PageTitle>
+      <PageTitle
+        action={
+          reviewCount > 0 ? (
+            <Link to="/transactions?review=1">
+              <Badge tone="warning">
+                {reviewCount} transaction{reviewCount === 1 ? '' : 's'} to review
+              </Badge>
+            </Link>
+          ) : undefined
+        }
+      >
+        Dashboard
+      </PageTitle>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card>
           <p className="text-sm text-textMuted">Spent</p>

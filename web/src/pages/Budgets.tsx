@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  clearBudget,
   fetchBudgets,
   fetchCategories,
   fetchTransactions,
   currentMonth,
   formatMonthLabel,
   formatMoney,
+  setBudget,
   spentByCategory,
 } from '../lib/api';
 import type { Budget, Category, Transaction } from '../lib/types';
-import { AmountText, Card, ColorDot, PageTitle, ProgressBar, Spinner } from '../components/ui';
+import { AmountText, Button, Card, ColorDot, PageTitle, ProgressBar, Spinner, TextInput } from '../components/ui';
 
 function shiftMonth(month: string, delta: number): string {
   const [y, m] = month.split('-').map(Number);
@@ -23,9 +25,11 @@ export default function Budgets({ userId }: { userId: string }) {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState(currentMonth());
+  const [editing, setEditing] = useState<string | null>(null); // category id
+  const [draft, setDraft] = useState('');
 
-  useEffect(() => {
-    Promise.all([fetchTransactions(userId), fetchCategories(userId), fetchBudgets(userId)])
+  const load = useCallback(() => {
+    return Promise.all([fetchTransactions(userId), fetchCategories(userId), fetchBudgets(userId)])
       .then(([t, c, b]) => {
         setTxns(t);
         setCats(c);
@@ -34,6 +38,25 @@ export default function Budgets({ userId }: { userId: string }) {
       .finally(() => setLoading(false));
   }, [userId]);
 
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const saveCap = async (categoryId: string) => {
+    const limit = parseFloat(draft);
+    if (Number.isFinite(limit) && limit > 0) {
+      await setBudget(userId, categoryId, month, limit);
+      await load();
+    }
+    setEditing(null);
+    setDraft('');
+  };
+
+  const removeCap = async (budgetId: string) => {
+    await clearBudget(budgetId);
+    await load();
+  };
+
   const rows = useMemo(() => {
     const byName = spentByCategory(txns, month);
     return cats.map((cat) => {
@@ -41,7 +64,7 @@ export default function Budgets({ userId }: { userId: string }) {
       const limit = budget?.limitAmount ?? 0;
       const spent = byName[cat.name] ?? 0;
       const pct = limit > 0 ? spent / limit : 0;
-      return { cat, limit, spent, pct, over: limit > 0 && spent > limit, hasBudget: !!budget };
+      return { cat, budget, limit, spent, pct, over: limit > 0 && spent > limit, hasBudget: !!budget };
     });
   }, [cats, budgets, txns, month]);
 
@@ -81,20 +104,58 @@ export default function Budgets({ userId }: { userId: string }) {
       </Card>
 
       <div className="flex flex-col gap-3">
-        {rows.map(({ cat, limit, spent, pct, over, hasBudget }) => (
+        {rows.map(({ cat, budget, limit, spent, pct, over, hasBudget }) => (
           <Card key={cat.id}>
             <div className="mb-2 flex items-center justify-between">
               <span className="flex items-center gap-2 font-medium">
                 <ColorDot color={cat.color} />
                 {cat.name}
               </span>
-              <span className="text-sm text-textMuted">
-                {hasBudget ? (
+              <span className="flex items-center gap-2 text-sm text-textMuted">
+                {editing === cat.id ? (
+                  <>
+                    <TextInput
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={draft}
+                      autoFocus
+                      placeholder="Cap"
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && saveCap(cat.id)}
+                      className="w-24"
+                    />
+                    <Button onClick={() => saveCap(cat.id)}>Set</Button>
+                    <Button variant="ghost" onClick={() => setEditing(null)}>
+                      Cancel
+                    </Button>
+                  </>
+                ) : hasBudget ? (
                   <>
                     {formatMoney(spent)} / {formatMoney(limit)}
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setEditing(cat.id);
+                        setDraft(String(limit));
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button variant="danger" onClick={() => budget && removeCap(budget.id)}>
+                      Clear
+                    </Button>
                   </>
                 ) : (
-                  'No budget'
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setEditing(cat.id);
+                      setDraft('');
+                    }}
+                  >
+                    Set budget
+                  </Button>
                 )}
               </span>
             </div>
