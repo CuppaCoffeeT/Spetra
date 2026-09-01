@@ -10,6 +10,35 @@ import {
 import type { Category, Rule } from '../lib/types';
 import { Badge, Button, Card, PageTitle, Spinner, TextInput } from '../components/ui';
 
+// Curated Private Ledger swatch cycle — muted, paper-friendly hues.
+const SWATCHES = [
+  '#8A6A43',
+  '#3F6C50',
+  '#5B6B8C',
+  '#9C3F34',
+  '#8A6116',
+  '#6E5A78',
+  '#4E7A72',
+  '#7A5B4A',
+];
+
+const STARTERS = [
+  'Food',
+  'Transport',
+  'Shopping',
+  'Groceries',
+  'Bills',
+  'Entertainment',
+  'Health',
+  'Travel',
+];
+
+// First swatch no existing category uses; fall back to cycling.
+function nextSwatch(cats: Category[]): string {
+  const used = new Set(cats.map((c) => (c.color ?? '').toUpperCase()));
+  return SWATCHES.find((s) => !used.has(s.toUpperCase())) ?? SWATCHES[cats.length % SWATCHES.length];
+}
+
 function ruleSource(priority: number): { label: string; tone: 'accent' | 'income' | 'muted' } {
   if (priority >= 200) return { label: 'your correction', tone: 'income' };
   if (priority <= 50) return { label: 'AI-learned', tone: 'accent' };
@@ -23,6 +52,7 @@ export default function Categories({ userId }: { userId: string }) {
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
+  const [seeding, setSeeding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -43,11 +73,26 @@ export default function Categories({ userId }: { userId: string }) {
     if (!name) return;
     setError(null);
     try {
-      await createCategory(userId, name, '#64748B', cats.length);
+      await createCategory(userId, name, nextSwatch(cats), cats.length);
       setNewName('');
       load();
     } catch (e: any) {
       setError(e.message ?? 'Add failed');
+    }
+  };
+
+  const addStarters = async () => {
+    setError(null);
+    setSeeding(true);
+    try {
+      for (let i = 0; i < STARTERS.length; i++) {
+        await createCategory(userId, STARTERS[i], SWATCHES[i % SWATCHES.length], i);
+      }
+      await load();
+    } catch (e: any) {
+      setError(e.message ?? 'Could not add starter categories');
+    } finally {
+      setSeeding(false);
     }
   };
 
@@ -97,39 +142,59 @@ export default function Categories({ userId }: { userId: string }) {
               key={c.id}
               className="flex items-center gap-3 border-b border-border py-2 last:border-0"
             >
-              <input
-                type="color"
-                value={c.color ?? '#64748B'}
-                onChange={(e) => recolor(c, e.target.value)}
-                className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
+              <label
                 title="Colour"
-              />
+                className="-m-2 grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-lg focus-within:ring-1 focus-within:ring-inset focus-within:ring-accent"
+              >
+                <span
+                  aria-hidden="true"
+                  className="h-6 w-6 rounded-full border border-border"
+                  style={{ backgroundColor: c.color ?? SWATCHES[0] }}
+                />
+                <input
+                  type="color"
+                  value={c.color ?? SWATCHES[0]}
+                  onChange={(e) => recolor(c, e.target.value)}
+                  aria-label={`Colour for ${c.name}`}
+                  className="sr-only"
+                />
+              </label>
               <TextInput
                 defaultValue={c.name}
                 onBlur={(e) => rename(c, e.target.value)}
                 className="flex-1 border-transparent bg-transparent"
               />
-              <Button variant="danger" onClick={() => removeCat(c)}>
+              <Button variant="danger" className="-my-0.5 min-h-[44px]" onClick={() => removeCat(c)}>
                 Delete
               </Button>
             </div>
           ))}
           {cats.length === 0 && (
-            <p className="py-4 text-sm text-textMuted">
-              No categories yet — sign in on the app once to seed defaults, or add your own above.
-            </p>
+            <div className="flex flex-col items-start gap-3 py-4">
+              <p className="text-sm text-textSecondary">
+                No categories yet — add starter categories below, or create your own.
+              </p>
+              <Button
+                variant="ghost"
+                className="border border-border"
+                onClick={addStarters}
+                disabled={seeding}
+              >
+                {seeding ? 'Adding…' : 'Add starter categories'}
+              </Button>
+            </div>
           )}
         </div>
       </Card>
 
       <PageTitle>Learned rules</PageTitle>
       <Card>
-        <p className="mb-4 text-sm text-textMuted">
+        <p className="mb-4 text-sm text-textSecondary">
           What the categorizer has learned. Merchant keywords map to categories; your corrections
           outrank AI guesses. Delete a rule to make the categorizer re-decide next time.
         </p>
         {rules.length === 0 ? (
-          <p className="py-4 text-sm text-textMuted">
+          <p className="py-4 text-sm text-textSecondary">
             Nothing learned yet — it fills up as transactions flow in and as you re-categorize.
           </p>
         ) : (
@@ -147,7 +212,11 @@ export default function Categories({ userId }: { userId: string }) {
                     <span>{r.category}</span>
                     <Badge tone={src.tone === 'muted' ? undefined : src.tone}>{src.label}</Badge>
                   </div>
-                  <Button variant="danger" onClick={() => removeRule(r)}>
+                  <Button
+                    variant="danger"
+                    className="-my-0.5 min-h-[44px]"
+                    onClick={() => removeRule(r)}
+                  >
                     Forget
                   </Button>
                 </div>

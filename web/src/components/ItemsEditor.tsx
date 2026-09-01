@@ -1,19 +1,52 @@
 import { formatMoney } from '../lib/api';
 import type { Category, ItemDraft } from '../lib/types';
+import { X } from './Icons';
 import { Button, Select, TextInput, inputCls } from './ui';
+
+// A row is "incomplete" when it half-exists: a name without a positive amount,
+// or an amount without a name. Fully-empty rows stay silently droppable.
+function isIncomplete(it: ItemDraft): boolean {
+  const hasName = it.name.trim().length > 0;
+  const hasAmount = it.amount > 0;
+  return (hasName && !hasAmount) || (!hasName && hasAmount);
+}
+
+// Parents use this to drive the two-step "will be dropped" warning.
+export function countIncomplete(items: ItemDraft[]): number {
+  return items.reduce((n, it) => n + (isIncomplete(it) ? 1 : 0), 0);
+}
+
+// 40% warning tint for half-filled rows; browsers without color-mix ignore the
+// inline declaration and fall back to the plain border-warning class.
+const warnBorderStyle = {
+  borderColor: 'color-mix(in srgb, var(--warning) 40%, transparent)',
+} as const;
+
+const miniLabelCls =
+  'text-[10px] font-medium uppercase tracking-[0.08em] text-textSecondary md:hidden';
+
+const removeBtnCls =
+  '-m-2 h-11 w-11 shrink-0 place-items-center rounded-lg text-textMuted transition-colors duration-[160ms] ease-house hover:bg-surfaceAlt hover:text-expense focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent';
 
 // Editable list of line items (e.g. burger, fries, drink on one receipt).
 // Controlled: parent owns the drafts array. amount = line total.
+// md+: one 6-col ledger grid per row. Below md: each item is a card.
+// DOM order of inputs stays name -> qty -> unitPrice -> amount -> category
+// (e2e: last input[step="0.01"] must be the item amount).
 export default function ItemsEditor({
   items,
   onChange,
   categories,
   transactionTotal,
+  onUseTotal,
+  flagIncomplete = false,
 }: {
   items: ItemDraft[];
   onChange: (items: ItemDraft[]) => void;
   categories: Category[];
   transactionTotal: number | null;
+  onUseTotal?: (sum: number) => void;
+  flagIncomplete?: boolean;
 }) {
   const update = (i: number, patch: Partial<ItemDraft>) => {
     const next = items.slice();
@@ -32,75 +65,104 @@ export default function ItemsEditor({
   return (
     <div className="flex flex-col gap-2">
       {items.length > 0 && (
-        <div className="grid grid-cols-[1fr_3.5rem_4.5rem_5rem_minmax(6rem,8rem)_2rem] items-center gap-2 text-[11px] uppercase tracking-wide text-textMuted">
+        <div className="hidden grid-cols-[1fr_3.5rem_4.5rem_5rem_minmax(6rem,8rem)_2rem] items-center gap-2 border-b border-border pb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-textSecondary md:grid">
           <span>Item</span>
           <span>Qty</span>
           <span>Unit</span>
-          <span>Amount</span>
+          <span className="text-right">Amount</span>
           <span>Category</span>
           <span />
         </div>
       )}
-      {items.map((it, i) => (
-        <div
-          key={i}
-          className="grid grid-cols-[1fr_3.5rem_4.5rem_5rem_minmax(6rem,8rem)_2rem] items-center gap-2"
-        >
-          <TextInput
-            value={it.name}
-            placeholder="e.g. Double cheeseburger"
-            onChange={(e) => update(i, { name: e.target.value })}
-          />
-          <input
-            type="number"
-            min="0"
-            step="any"
-            value={it.qty}
-            onChange={(e) => update(i, { qty: parseFloat(e.target.value) || 1 })}
-            className={inputCls}
-          />
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={it.unitPrice ?? ''}
-            placeholder="—"
-            onChange={(e) =>
-              update(i, { unitPrice: e.target.value === '' ? null : parseFloat(e.target.value) })
-            }
-            className={inputCls}
-          />
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={it.amount || ''}
-            onChange={(e) => update(i, { amount: parseFloat(e.target.value) || 0 })}
-            className={inputCls}
-          />
-          <Select
-            value={it.category ?? ''}
-            onChange={(e) => update(i, { category: e.target.value || null })}
+      {items.map((it, i) => {
+        const warn = flagIncomplete && isIncomplete(it);
+        return (
+          <div
+            key={i}
+            style={warn ? warnBorderStyle : undefined}
+            className={`flex grid-cols-[1fr_3.5rem_4.5rem_5rem_minmax(6rem,8rem)_2rem] flex-col gap-2 rounded-lg border ${
+              warn ? 'border-warning' : 'border-border'
+            } bg-surfaceAlt p-3 md:grid md:items-center md:rounded-none md:border-0 md:bg-transparent md:p-0`}
           >
-            <option value="">(txn's)</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.name}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-          <button
-            type="button"
-            onClick={() => onChange(items.filter((_, j) => j !== i))}
-            className="rounded-lg py-1 text-textMuted hover:bg-surfaceAlt hover:text-expense"
-            title="Remove item"
-          >
-            ✕
-          </button>
-        </div>
-      ))}
+            <div className="flex items-center gap-2 md:contents">
+              <TextInput
+                value={it.name}
+                placeholder="e.g. Double cheeseburger"
+                onChange={(e) => update(i, { name: e.target.value })}
+                className="min-w-0 flex-1"
+                style={warn ? warnBorderStyle : undefined}
+              />
+              <button
+                type="button"
+                onClick={() => onChange(items.filter((_, j) => j !== i))}
+                aria-label="Remove item"
+                title="Remove item"
+                className={`grid md:hidden ${removeBtnCls}`}
+              >
+                <X />
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-x-2 gap-y-1 md:contents">
+              <span className={miniLabelCls}>Qty</span>
+              <span className={miniLabelCls}>Unit</span>
+              <span className={miniLabelCls}>Amount</span>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={it.qty}
+                onChange={(e) => update(i, { qty: parseFloat(e.target.value) || 1 })}
+                className={`${inputCls} w-full min-w-0`}
+              />
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={it.unitPrice ?? ''}
+                placeholder="—"
+                onChange={(e) =>
+                  update(i, { unitPrice: e.target.value === '' ? null : parseFloat(e.target.value) })
+                }
+                className={`${inputCls} w-full min-w-0`}
+              />
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={it.amount || ''}
+                onChange={(e) => update(i, { amount: parseFloat(e.target.value) || 0 })}
+                className={`${inputCls} w-full min-w-0 text-right [font-variant-numeric:tabular-nums]`}
+                style={warn ? warnBorderStyle : undefined}
+              />
+            </div>
+            <Select
+              value={it.category ?? ''}
+              onChange={(e) => update(i, { category: e.target.value || null })}
+              className="w-full min-w-0"
+            >
+              <option value="">(txn's)</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+            <button
+              type="button"
+              onClick={() => onChange(items.filter((_, j) => j !== i))}
+              aria-label="Remove item"
+              title="Remove item"
+              className={`hidden md:grid ${removeBtnCls}`}
+            >
+              <X />
+            </button>
+          </div>
+        );
+      })}
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <Button
           variant="ghost"
           onClick={() =>
@@ -113,6 +175,18 @@ export default function ItemsEditor({
           <span className={`text-xs ${mismatch ? 'text-warning' : 'text-textMuted'}`}>
             Items total {formatMoney(itemsSum)}
             {mismatch && transactionTotal != null && ` ≠ transaction ${formatMoney(transactionTotal)}`}
+            {mismatch && onUseTotal && (
+              <>
+                {' · '}
+                <button
+                  type="button"
+                  onClick={() => onUseTotal(itemsSum)}
+                  className="-my-3 py-3 text-accent underline decoration-border underline-offset-2 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent"
+                >
+                  Use items total
+                </button>
+              </>
+            )}
           </span>
         )}
       </div>

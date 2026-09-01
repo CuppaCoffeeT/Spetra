@@ -166,7 +166,7 @@ test('dashboard renders totals, budgets, review badge and recent transactions', 
   await expect(page.getByText('1 transaction to review')).toBeVisible();
   // Spent = 12.90 + 89.00 out this month.
   await expect(page.getByText('$101.90').first()).toBeVisible();
-  await expect(page.getByText('$2500.00').first()).toBeVisible();
+  await expect(page.getByText('$2,500.00').first()).toBeVisible();
   await expect(page.getByText('BURGER KING JEM').first()).toBeVisible();
   await expect(page.getByText("This Month's Budgets")).toBeVisible();
   expect(errors).toEqual([]);

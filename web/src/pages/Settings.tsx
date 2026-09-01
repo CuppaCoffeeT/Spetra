@@ -7,6 +7,7 @@ import {
   seedCategorizer,
 } from '../lib/api';
 import { supabase } from '../lib/supabase';
+import { useTheme } from '../lib/useTheme';
 import type { CategorizerStatus, IngestKey } from '../lib/types';
 import { Badge, Button, Card, PageTitle, Spinner, TextInput } from '../components/ui';
 
@@ -15,11 +16,12 @@ const INGEST_URL = `${
   'https://fpasfffeywotrclprcai.supabase.co'
 }/functions/v1/ingest`;
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, className = '' }: { text: string; className?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <Button
       variant="ghost"
+      className={className}
       onClick={() => {
         navigator.clipboard.writeText(text);
         setCopied(true);
@@ -73,7 +75,7 @@ function CategorizerCard() {
 
   return (
     <Card className="mb-6">
-      <h2 className="mb-1 font-semibold">🧠 Self-learning categorizer</h2>
+      <h2 className="mb-1 font-medium">Self-learning categorizer</h2>
       <p className="mb-3 text-sm text-textMuted">
         Runs entirely inside your Supabase backend (built-in embedding model + your labeled
         history) — no external AI key needed. Every category correction you make becomes a labeled
@@ -106,12 +108,19 @@ function CategorizerCard() {
   );
 }
 
+const THEME_OPTIONS = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+] as const;
+
 // Auto-tracking setup: ingest keys + the two live capture paths
 // (iOS Shortcut for Apple Pay taps, email worker for bank alerts).
 export default function Settings({ userId }: { userId: string }) {
   const [keys, setKeys] = useState<IngestKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [label, setLabel] = useState('');
+  const { mode, setMode } = useTheme();
 
   const load = useCallback(
     () => fetchIngestKeys(userId).then(setKeys).finally(() => setLoading(false)),
@@ -143,7 +152,7 @@ export default function Settings({ userId }: { userId: string }) {
       <PageTitle>Settings</PageTitle>
 
       <Card className="mb-6">
-        <h2 className="mb-1 font-semibold">Auto-tracking keys</h2>
+        <h2 className="mb-1 font-medium">Auto-tracking keys</h2>
         <p className="mb-4 text-sm text-textMuted">
           Secrets that let your iPhone Shortcut and the email worker post transactions into your
           account. Treat them like passwords — revoke any that leak.
@@ -161,7 +170,7 @@ export default function Settings({ userId }: { userId: string }) {
           {keys.map((k) => (
             <div
               key={k.id}
-              className="flex items-center justify-between gap-3 border-b border-border py-2 text-sm last:border-0"
+              className="border-b border-border py-3 text-sm last:border-0 sm:flex sm:items-center sm:justify-between sm:gap-3"
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -174,11 +183,13 @@ export default function Settings({ userId }: { userId: string }) {
                     <Badge>never used</Badge>
                   )}
                 </div>
-                <code className="block truncate text-xs text-textMuted">{k.key}</code>
+                <code className="mt-1 inline-block max-w-full truncate rounded-lg bg-surfaceAlt px-2 py-1 align-bottom font-mono text-xs text-textSecondary">
+                  {k.key}
+                </code>
               </div>
-              <div className="flex shrink-0 gap-1">
-                <CopyButton text={k.key} />
-                <Button variant="danger" onClick={() => revoke(k)}>
+              <div className="mt-2 flex shrink-0 gap-2 sm:mt-0">
+                <CopyButton text={k.key} className="border border-border" />
+                <Button variant="danger" className="ml-auto sm:ml-0" onClick={() => revoke(k)}>
                   Revoke
                 </Button>
               </div>
@@ -188,33 +199,37 @@ export default function Settings({ userId }: { userId: string }) {
             <p className="py-2 text-sm text-textMuted">No keys yet — create one to start.</p>
           )}
         </div>
-        <div className="mt-4 flex items-center justify-between gap-2 rounded-lg bg-surfaceAlt p-3 text-sm">
+        <div className="mt-4 flex flex-col gap-2 rounded-lg bg-surfaceAlt p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <span className="text-textMuted">Webhook URL: </span>
+            <span className="text-textSecondary">Webhook URL: </span>
             <code className="break-all text-xs">{INGEST_URL}</code>
           </div>
-          <CopyButton text={INGEST_URL} />
+          <div className="flex sm:shrink-0">
+            <CopyButton text={INGEST_URL} className="border border-border" />
+          </div>
         </div>
       </Card>
 
       <CategorizerCard />
 
       <Card className="mb-6">
-        <h2 className="mb-1 font-semibold">📱 Live Apple Pay tracking (iOS Shortcut)</h2>
+        <h2 className="mb-1 font-medium">Live Apple Pay tracking (iOS Shortcut)</h2>
         <p className="mb-3 text-sm text-textMuted">
           Every card tap creates a transaction here within seconds. One-time setup on your iPhone
           (iOS 17+):
         </p>
         <ol className="list-decimal space-y-2 pl-5 text-sm text-textSecondary">
           <li>
-            Open <b>Shortcuts</b> → <b>Automation</b> → <b>+</b> → <b>Transaction</b>.
+            Open <b className="font-medium">Shortcuts</b> → <b className="font-medium">Automation</b>{' '}
+            → <b className="font-medium">+</b> → <b className="font-medium">Transaction</b>.
           </li>
           <li>
-            Select your card(s), keep <b>Anything</b> for merchant/category, choose{' '}
-            <b>Run Immediately</b> (and turn off "Notify When Run" if offered).
+            Select your card(s), keep <b className="font-medium">Anything</b> for merchant/category,
+            choose <b className="font-medium">Run Immediately</b> (and turn off "Notify When Run" if
+            offered).
           </li>
           <li>
-            For the action, add <b>Get Contents of URL</b> and configure:
+            For the action, add <b className="font-medium">Get Contents of URL</b> and configure:
             <div className="mt-2 overflow-x-auto rounded-lg bg-surfaceAlt p-3 font-mono text-xs leading-relaxed">
               URL: {INGEST_URL}
               <br />
@@ -240,7 +255,7 @@ export default function Settings({ userId }: { userId: string }) {
       </Card>
 
       <Card className="mb-6">
-        <h2 className="mb-1 font-semibold">📧 Live PayNow &amp; bank-alert tracking (email)</h2>
+        <h2 className="mb-1 font-medium">Live PayNow &amp; bank-alert tracking (email)</h2>
         <p className="mb-3 text-sm text-textSecondary">
           Bank alert emails (PayNow QR, NETS, card, transfers) are parsed the moment they arrive and
           merged with Shortcut-tracked taps automatically. Setup lives in{' '}
@@ -256,7 +271,33 @@ export default function Settings({ userId }: { userId: string }) {
       </Card>
 
       <Card>
-        <h2 className="mb-3 font-semibold">Account</h2>
+        <h2 className="mb-3 font-medium">Account</h2>
+        <div className="mb-4">
+          <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.08em] text-textSecondary">
+            Theme
+          </p>
+          <div className="flex items-center text-sm">
+            {THEME_OPTIONS.map((opt, i) => (
+              <span key={opt.value} className="flex items-center">
+                {i > 0 && (
+                  <span aria-hidden="true" className="px-1 text-textMuted">
+                    ·
+                  </span>
+                )}
+                <button
+                  type="button"
+                  aria-pressed={mode === opt.value}
+                  onClick={() => setMode(opt.value)}
+                  className={`-my-2 min-h-[44px] rounded-lg px-2 transition-colors duration-[160ms] ease-house focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent ${
+                    mode === opt.value ? 'text-textPrimary' : 'text-textSecondary'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
         <Button variant="danger" onClick={() => supabase.auth.signOut()}>
           Sign out
         </Button>

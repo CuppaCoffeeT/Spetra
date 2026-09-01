@@ -424,13 +424,14 @@ export async function parseReceipt(imageBase64: string, mediaType: string): Prom
   return data as ReceiptParse;
 }
 
-// Attach the receipt image + row to a transaction (best-effort; never blocks the save).
+// Attach the receipt image + row to a transaction (best-effort; never blocks the
+// save). Returns false on failure so callers can surface it as a warning toast.
 export async function uploadReceipt(
   userId: string,
   transactionId: string,
   file: File,
   parsed: ReceiptParse | null
-): Promise<void> {
+): Promise<boolean> {
   try {
     const ext = file.name.split('.').pop() || 'jpg';
     const path = `${userId}/${transactionId}-${Date.now()}.${ext}`;
@@ -446,8 +447,10 @@ export async function uploadReceipt(
       receipt_date: parsed?.date ? new Date(parsed.date).toISOString() : null,
     });
     if (error) throw error;
+    return true;
   } catch (e) {
     console.error('receipt upload failed (transaction saved anyway):', e);
+    return false;
   }
 }
 
@@ -494,7 +497,10 @@ export function spentByCategory(
 
 export function formatMoney(amount: number, currency = 'SGD'): string {
   const symbol = currency === 'SGD' || currency === 'USD' || currency === 'AUD' ? '$' : currency + ' ';
-  return `${symbol}${Math.abs(amount).toFixed(2)}`;
+  return `${symbol}${Math.abs(amount).toLocaleString('en-SG', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 export function formatMonthLabel(month: string): string {
