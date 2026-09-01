@@ -90,11 +90,10 @@ Deno.serve(async (req) => {
     .maybeSingle();
   if (!keyRow) return json(401, { error: 'invalid ingest key' });
   const userId: string = keyRow.user_id;
-  supabase
+  await supabase
     .from('ingest_keys')
     .update({ last_used_at: new Date().toISOString() })
-    .eq('id', keyRow.id)
-    .then(() => {});
+    .eq('id', keyRow.id);
 
   let body: any;
   try {
