@@ -53,3 +53,7 @@ supabase/.temp/
 
 # Cloudflare worker deps
 integrations/cloudflare-email-worker/node_modules
+
+# Playwright
+web/test-results/
+web/playwright-report/
