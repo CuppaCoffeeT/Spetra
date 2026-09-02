@@ -26,7 +26,7 @@ export default function Login() {
   const isSignup = mode === 'signup';
 
   const inputClass = (invalid: boolean) =>
-    `rounded-lg border bg-surface px-3 py-2 text-sm outline-none ${
+    `rounded-lg border bg-surface px-3 py-2 text-base text-textPrimary focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent md:text-sm ${
       invalid ? 'border-expense' : 'border-border focus:border-accent'
     }`;
 
@@ -69,9 +69,9 @@ export default function Login() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-6">
+    <div className="flex min-h-dvh items-center justify-center p-6">
       <Card className="w-full max-w-sm">
-        <h1 className="mb-1 text-xl font-bold">Spend Tracker</h1>
+        <h1 className="mb-1 font-display text-[22px] font-medium text-textPrimary">Spend Tracker</h1>
         <p className="mb-6 text-sm text-textMuted">
           {isSignup ? 'Create your account' : 'Sign in to view your wallet'}
         </p>
@@ -152,13 +152,15 @@ export default function Login() {
           <button
             type="submit"
             disabled={busy}
-            className="rounded-lg bg-primary py-2 text-sm font-semibold disabled:opacity-50"
-            style={{ color: 'var(--bg)' }}
+            className="min-h-[44px] rounded-lg bg-primary py-2 text-sm font-medium text-bg transition-opacity duration-[160ms] ease-house hover:opacity-90 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent disabled:opacity-50"
           >
             {busy ? '…' : isSignup ? 'Create account' : 'Sign in'}
           </button>
         </form>
-        <button onClick={switchMode} className="mt-4 text-sm text-accent">
+        <button
+          onClick={switchMode}
+          className="mt-1 rounded-lg py-3 text-sm text-accent focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent"
+        >
           {isSignup ? 'Have an account? Sign in' : "Don't have an account? Sign up"}
         </button>
       </Card>

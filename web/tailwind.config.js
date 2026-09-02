@@ -19,6 +19,12 @@ export default {
         warning: 'var(--warning)',
       },
       borderRadius: { card: '16px' },
+      fontFamily: {
+        display: ['ui-serif', 'Georgia', 'Cambria', 'Times New Roman', 'serif'],
+      },
+      transitionTimingFunction: {
+        house: 'cubic-bezier(0.22,1,0.36,1)',
+      },
     },
   },
   plugins: [],
