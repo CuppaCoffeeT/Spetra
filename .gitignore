@@ -58,3 +58,6 @@ integrations/cloudflare-email-worker/node_modules
 web/test-results/
 web/playwright-report/
 web/e2e/__screens/
+
+# Vercel
+web/.vercel/
